@@ -15,12 +15,13 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" type="text/css" href="style.css" />
+    <link rel="icon" href="data:," />
   </head>
 
   <body>
     <div class="abs" id="very_start_bg1"></div>
     <div class="abs" id="very_start_bg2">
-      <div id="very_start" class="abs" style="padding-top: 55%">
+      <div id="very_start" class="abs">
         <span data-i18n-html="splash">UP FOR<br />A FEW ROUNDS<br />OF GWENT?</span>
         <br /><br />
         <font id="load_text" data-i18n="loading">Loading...</font>
@@ -292,6 +293,7 @@
         <span data-i18n="no_server">Server is not running. Run npm start</span>
       </div>
       <button id="offline-game" type="button" data-i18n="offline_play">Offline</button>
+      <button id="tutorial-game" type="button" data-i18n="tut_btn">Tutorial</button>
       <select id="cpu-level" aria-label="CPU">
         <option value="principiante" data-i18n="cpu_principiante">Beginner</option>
         <option value="facil" data-i18n="cpu_facil">Easy</option>
@@ -336,6 +338,56 @@
         </div>
       </div>
     </div>
+    <div id="account-bar">
+      <div id="account-in">
+        <input id="account-name" maxlength="16" autocomplete="username" data-i18n-placeholder="acc_name" placeholder="Name" />
+        <input id="account-pass" type="password" maxlength="64" autocomplete="current-password" data-i18n-placeholder="acc_pass" placeholder="Password" />
+        <select id="account-faction" aria-label="Faction"></select>
+        <button id="account-register" type="button" data-i18n="acc_register">Create account</button>
+        <button id="account-login" type="button" data-i18n="acc_login">Log in</button>
+      </div>
+      <div id="account-out" class="hide">
+        <span id="account-who"></span>
+        <button id="account-open" type="button">Open pack (0)</button>
+        <button id="account-logout" type="button" data-i18n="acc_logout">Log out</button>
+      </div>
+    </div>
+    <p id="reward-note" class="hide"></p>
+    <section id="pack-show" class="hide">
+      <div id="pack-stage">
+        <div id="pack-rays"></div>
+        <div id="pack-flash"></div>
+        <div id="pack-cards"></div>
+        <div id="pack-env">
+          <div class="env-back"></div>
+          <div class="env-pocket"></div>
+          <div class="env-flap"></div>
+          <div class="env-seal"></div>
+        </div>
+        <button id="pack-done" type="button" class="hide" data-i18n="notice_ok">OK</button>
+      </div>
+    </section>
+    <div id="bet-panel" class="hide">
+      <p id="bet-title" data-i18n="bet_title">Bet</p>
+      <div id="bet-controls">
+        <select id="bet-pick"></select>
+        <button id="bet-add" type="button" data-i18n="bet_add">Add</button>
+        <button id="bet-clear" type="button" data-i18n="bet_clear">Clear</button>
+        <button id="bet-ok" type="button" data-i18n="bet_ok">Confirm bet</button>
+      </div>
+      <p id="bet-mine"></p>
+      <p id="bet-theirs"></p>
+      <p id="bet-status"></p>
+    </div>
+    <aside id="tutorial-panel" class="hide">
+      <p id="tutorial-text"></p>
+      <div>
+        <button id="tutorial-back" type="button" data-i18n="tut_back">Back</button>
+        <button id="tutorial-next" type="button" data-i18n="tut_next">Next</button>
+        <button id="tutorial-play" type="button" class="hide" data-i18n="tut_play">Play practice</button>
+        <button id="tutorial-close" type="button" data-i18n="tut_close">Close</button>
+      </div>
+    </aside>
     <div
       id="toggle-music"
       class="center music-customization"
@@ -353,13 +405,16 @@
     <script type="text/javascript" src="decks.js"></script>
     <script type="text/javascript" src="abilities.js"></script>
     <script type="text/javascript" src="factions.js"></script>
-    <script src="https://www.youtube.com/iframe_api"></script>
     <script type="text/javascript" src="config.js"></script>
     <script type="text/javascript" src="session.js"></script>
     <div id="top-tools">
       <button id="aid-open" type="button" data-i18n="aid_btn">Aid</button>
       <button id="rules-open" type="button" data-i18n="rules_btn">Rules</button>
       <button id="lang-toggle" type="button">ES</button>
+      <button id="full-toggle" type="button" aria-label="Fullscreen">
+        <svg class="full-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
+        <svg class="full-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
+      </button>
     </div>
     <section id="rules-modal" class="hide">
       <div id="rules-panel" role="dialog" aria-modal="true" aria-labelledby="rules-heading">
@@ -368,6 +423,15 @@
           <button id="rules-close" type="button" data-i18n="rules_close">Close</button>
         </header>
         <div id="rules-body"></div>
+      </div>
+    </section>
+    <section id="game-notice" class="hide">
+      <div id="game-notice-panel" role="dialog" aria-modal="true">
+        <p id="game-notice-text"></p>
+        <div>
+          <button id="game-notice-yes" type="button"></button>
+          <button id="game-notice-no" type="button"></button>
+        </div>
       </div>
     </section>
     <section id="aid-modal" class="hide">
@@ -382,5 +446,6 @@
     <script type="text/javascript" src="i18n.js"></script>
     <script type="text/javascript" src="ai.js"></script>
     <script type="text/javascript" src="gwent.js"></script>
+    <script type="text/javascript" src="profile.js"></script>
   </body>
 </html>

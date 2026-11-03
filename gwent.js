@@ -3,6 +3,7 @@
 class Controller {}
 
 // Websocket and Server config
+var accountProfile = null;
 let amReady = false;
 let oponentReady = false;
 let playerId = null;
@@ -1271,12 +1272,18 @@ class Game {
 
   // Initializes player abilities, hands and waits for cointoss
   async startGame() {
+    if (tutorialOn && tutorialPhase !== "match") endTutorial();
     gameStartControlsElem.classList.add("hide");
     document.getElementById("lobby-bar").classList.add("hide");
+    var accountBar = document.getElementById("account-bar");
+    var betPanel = document.getElementById("bet-panel");
+    if (accountBar) accountBar.classList.add("hide");
+    if (betPanel) betPanel.classList.add("hide");
     isOponentReadyElem.classList.add("hidden");
     ui.toggleMusic_elem.style.left = "26vw";
 
     ui.toggleMusic_elem.classList.remove("music-customization");
+    if (gameMode === "offline") this.cpuPaid = false;
     this.currPlayer = player_me;
     this.initPlayers(player_me, player_op);
     await Promise.all(
@@ -1534,12 +1541,24 @@ class Game {
       console.log("Game over! || Victory");
     }
 
+    if (accountProfile && (gameMode === "online" || gameMode === "offline")) {
+      let result = "lose";
+      if (player_op.health <= 0 && player_me.health <= 0) result = "draw";
+      else if (player_op.health === 0) result = "win";
+      if (gameMode === "online") netSend(JSON.stringify({ type: "matchResult", result: result }));
+      else if (!this.cpuPaid) {
+        this.cpuPaid = true;
+        if (typeof grantCpuReward === "function") grantCpuReward(result);
+      }
+    }
+
     fadeIn(endScreen, 300);
     ui.enablePlayer(true);
   }
 
   // Returns the client to the deck customization screen
   returnToCustomization() {
+    if (tutorialOn) endTutorial();
     gameMode = "online";
     netSend(JSON.stringify({ type: "unReady" }));
     amReady = false;
@@ -1556,6 +1575,9 @@ class Game {
     customizationElem.classList.remove("hide");
     gameStartControlsElem.classList.remove("hide");
     document.getElementById("lobby-bar").classList.remove("hide");
+    var accountBar = document.getElementById("account-bar");
+    if (accountBar) accountBar.classList.remove("hide");
+    if (typeof syncOwnedDeck === "function") syncOwnedDeck();
   }
 
   // Restarts the last game with the same decks
@@ -1877,6 +1899,10 @@ class UI {
 
   // Called when client toggles the music
   toggleMusic() {
+    if (!this.youtube || typeof this.youtube.getPlayerState !== "function") {
+      iniciarMusica();
+      return;
+    }
     if (this.youtube.getPlayerState() !== YT.PlayerState.PLAYING)
       iniciarMusica();
     else {
@@ -1887,6 +1913,10 @@ class UI {
 
   // Enables or disables backgorund music
   setYouTubeEnabled(enable) {
+    if (!this.youtube || typeof this.youtube.pauseVideo !== "function") {
+      if (enable) iniciarMusica();
+      return;
+    }
     if (this.ytActive === enable) return;
     if (enable && !this.mute) ui.youtube.playVideo();
     else ui.youtube.pauseVideo();
@@ -2006,6 +2036,7 @@ class UI {
 
   // Sets up description window for a card
   setDescription(card, desc) {
+    tutorialNote(card);
     if (
       card.hero ||
       card.row === "agile" ||
@@ -2148,11 +2179,7 @@ class UI {
 
   // Displays a cancellable Carousel for all cards in a container
   async viewCardsInContainer(container, action) {
-    action = action
-      ? action
-      : function () {
-          return this.cancel();
-        };
+    action = action ? action : () => this.cancel();
 
     await this.queueCarousel(container, 1, action, () => true, false, true);
     netSend(JSON.stringify({ type: "containerClosed" }));
@@ -2169,9 +2196,14 @@ class UI {
     bQuit,
     title,
   ) {
-    if (gameMode === "offline" && container.cards[0]) {
-      const owner = container.cards[0].holder;
-      if (owner && owner.controller instanceof ControllerAI) {
+    const holder = container.cards[0] && container.cards[0].holder;
+    const aiChooses =
+      gameMode === "offline" &&
+      holder &&
+      holder.controller instanceof ControllerAI &&
+      game.currPlayer &&
+      game.currPlayer.controller instanceof ControllerAI;
+    if (aiChooses) {
         for (let n = 0; n < count; n++) {
           let cards = container.cards.reduce(
             (a, c, i) => (!predicate || predicate(c) ? a.concat([i]) : a),
@@ -2181,7 +2213,6 @@ class UI {
           await action(container, cards[randomInt(cards.length)]);
         }
         return;
-      }
     }
     let carousel = new Carousel(
       container,
@@ -2469,6 +2500,7 @@ class Carousel {
     this.elem.classList.add("hide");
     Carousel.clearCurrent();
     ui.quitCarousel();
+    if (tutorialOn && tutorialPhase === "match" && !tutorialLive) enterTutorialLive();
   }
 
   // Statically sets the current carousel
@@ -3210,6 +3242,7 @@ class DeckMaker {
     );
 
     this.faction = "realms";
+    this.factionDecks = {};
     this.setFaction(this.faction, true);
 
     let start_deck = premade_deck.find((d) => d.faction === this.faction);
@@ -3310,7 +3343,7 @@ class DeckMaker {
         typeof factionField === "function"
           ? factionField(this.faction, "name")
           : this.faction;
-      alert(randomLimitText(copies, rules, factionName));
+      gameAlert(randomLimitText(copies, rules, factionName));
       return;
     }
     for (let i = 0; i < this.bank.length; i++) {
@@ -3318,8 +3351,8 @@ class DeckMaker {
       const want = Math.min(total, rolled.counts[this.bank[i].index] || 0);
       this.deck[i].count = want;
       this.bank[i].count = total - want;
-      this.deck[i].elem.children[0].innerHTML = want;
-      this.bank[i].elem.children[0].innerHTML = total - want;
+      setPreviewCount(this.deck[i].elem, want);
+      setPreviewCount(this.bank[i].elem, total - want);
     }
     if (this.leaders.length)
       this.setLeader(this.leaders[randomInt(this.leaders.length)].index);
@@ -3328,13 +3361,12 @@ class DeckMaker {
   }
 
   // Called when client selects a deck faction. Clears previous cards and makes valid cards available.
-  setFaction(faction_name, silent) {
+  async setFaction(faction_name, silent) {
     if (!silent && this.faction === faction_name) return false;
     if (!silent) {
       tocar("warning", false);
-      if (
-        !confirm(t("confirm_faction"))
-      ) {
+      const ask = accountProfile ? t("confirm_faction_account") : t("confirm_faction");
+      if (!(await gameConfirm(ask))) {
         tocar("warning", false);
         return false;
       }
@@ -3358,13 +3390,30 @@ class DeckMaker {
 
     this.leaders = card_dict
       .map((c, i) => ({ index: i, card: c }))
-      .filter((c) => c.card.deck === faction_name && c.card.row === "leader");
-    if (!this.leader || this.faction !== faction_name) {
-      this.leader = this.leaders[0];
-      this.leader_elem.children[1].style.backgroundImage = largeURL(
-        this.leader.card.deck + "_" + this.leader.card.filename,
-      );
-      paintLargeCard(this.leader_elem.children[1], this.leader.card);
+      .filter((c) => {
+        if (c.card.row !== "leader") return false;
+        if (accountProfile)
+          return (
+            c.card.deck === faction_name &&
+            (accountProfile.owned[c.card.filename] || 0) > 0
+          );
+        return c.card.deck === faction_name;
+      });
+    const still =
+      this.leader && this.leaders.some((l) => l.index === this.leader.index);
+    if (!still) {
+      const ofFaction = this.leaders.find((l) => l.card.deck === faction_name);
+      this.leader = ofFaction || this.leaders[0] || null;
+      const face = this.leader_elem.children[1];
+      if (this.leader) {
+        face.style.backgroundImage = largeURL(
+          this.leader.card.deck + "_" + this.leader.card.filename,
+        );
+        paintLargeCard(face, this.leader.card);
+      } else {
+        face.style.backgroundImage = "";
+        paintLargeCard(face, null);
+      }
     }
     this.faction = faction_name;
     setTimeout(function () {
@@ -3376,6 +3425,7 @@ class DeckMaker {
   // Called when client selects a leader for their deck
   setLeader(index) {
     this.leader = this.leaders.find((l) => l.index == index);
+    if (!this.leader) return;
     this.leader_elem.children[1].style.backgroundImage = largeURL(
       this.leader.card.deck + "_" + this.leader.card.filename,
     );
@@ -3388,11 +3438,13 @@ class DeckMaker {
     this.clear();
     let cards = card_dict
       .map((c, i) => ({ card: c, index: i }))
-      .filter(
-        (p) =>
-          [faction, "neutral", "weather", "special"].includes(p.card.deck) &&
-          p.card.row !== "leader",
-      );
+      .filter((p) => {
+        if (p.card.row === "leader") return false;
+        const usable = [faction, "neutral", "weather", "special"];
+        if (!usable.includes(p.card.deck)) return false;
+        if (accountProfile) return (accountProfile.owned[p.card.filename] || 0) > 0;
+        return true;
+      });
 
     cards.sort(function (id1, id2) {
       let a = card_dict[id1.index],
@@ -3407,13 +3459,12 @@ class DeckMaker {
       for (let i of Object.keys(deck)) deckMap[deck[i].index] = deck[i].count;
     }
     cards.forEach((p) => {
+      let cap = accountProfile
+        ? accountProfile.owned[p.card.filename] || 0
+        : Number.parseInt(p.card.count, 10);
       let count = deckMap[p.index] !== undefined ? Number(deckMap[p.index]) : 0;
-      this.makePreview(
-        p.index,
-        Number.parseInt(p.card.count) - count,
-        this.bank_elem,
-        this.bank,
-      );
+      if (count > cap) count = cap;
+      this.makePreview(p.index, cap - count, this.bank_elem, this.bank);
       this.makePreview(p.index, count, this.deck_elem, this.deck);
     });
   }
@@ -3428,13 +3479,11 @@ class DeckMaker {
     );
     elem.classList.add("card-lg");
     paintLargeCard(elem, card_data);
-    let count = document.createElement("div");
-    elem.appendChild(count);
+    setPreviewCount(elem, num);
     container_elem.appendChild(elem);
 
     let bankID = { index: index, count: num, elem: elem };
     let isBank = cards === this.bank;
-    count.innerHTML = bankID.count;
     cards.push(bankID);
     let cardIndex = cards.length - 1;
     elem.addEventListener("click", () => this.select(cardIndex, isBank), false);
@@ -3610,6 +3659,30 @@ class DeckMaker {
     Carousel.curr.update();
   }
 
+  rememberFactionDeck() {
+    if (!accountProfile || !this.deck) return;
+    this.factionDecks[this.faction] = {
+      leader: this.leader ? this.leader.index : null,
+      cards: this.deck
+        .filter((entry) => entry.count > 0)
+        .map((entry) => ({ index: entry.index, count: entry.count })),
+    };
+  }
+
+  // First visit to a faction: the deck is the cards of that faction the account owns.
+  placeOwnedFactionCards() {
+    this.makeBank(this.faction);
+    for (let i = 0; i < this.deck.length; i++) {
+      const card = card_dict[this.deck[i].index];
+      if (card.deck !== this.faction) continue;
+      const total = this.deck[i].count + this.bank[i].count;
+      this.deck[i].count = total;
+      this.bank[i].count = 0;
+      setPreviewCount(this.deck[i].elem, total);
+      setPreviewCount(this.bank[i].elem, 0);
+    }
+  }
+
   // Opens a Carousel to allow the client to select a faction for their deck
   selectFaction() {
     let container = new CardContainer();
@@ -3629,10 +3702,20 @@ class DeckMaker {
     ui.queueCarousel(
       container,
       1,
-      (c, i) => {
+      async (c, i) => {
         const card_faction_name = c.cards[i].filename;
-        let change = this.setFaction(card_faction_name);
+        this.rememberFactionDeck();
+        let change = await this.setFaction(card_faction_name);
         if (!change) return;
+        if (accountProfile) {
+          const saved = this.factionDecks[card_faction_name];
+          if (saved) {
+            this.makeBank(card_faction_name, saved.cards);
+            if (saved.leader != null) this.setLeader(saved.leader);
+          } else this.placeOwnedFactionCards();
+          this.update();
+          return;
+        }
         const faction_premade_deck = premade_deck.find(
           (d) => d.faction === card_faction_name,
         );
@@ -3671,13 +3754,13 @@ class DeckMaker {
   // Adds a card to container (Bank or deck)
   add(index, cards) {
     let id = cards[index];
-    id.elem.children[0].innerHTML = ++id.count;
+    setPreviewCount(id.elem, ++id.count);
   }
 
   // Removes a card from container (bank or deck)
   remove(index, cards) {
     let id = cards[index];
-    id.elem.children[0].innerHTML = --id.count;
+    setPreviewCount(id.elem, --id.count);
   }
 
   // Returns every card in the deck to the collection. The leader stays.
@@ -3687,9 +3770,9 @@ class DeckMaker {
       let copies = this.deck[i].count;
       if (!copies || !this.bank[i]) continue;
       this.bank[i].count += copies;
-      this.bank[i].elem.children[0].innerHTML = this.bank[i].count;
+      setPreviewCount(this.bank[i].elem, this.bank[i].count);
       this.deck[i].count = 0;
-      this.deck[i].elem.children[0].innerHTML = 0;
+      setPreviewCount(this.deck[i].elem, 0);
     }
     this.update();
   }
@@ -3717,7 +3800,8 @@ class DeckMaker {
 
     let warning = this.deckWarning();
 
-    if (warning != "") return alert(warning);
+    if (warning != "") return gameAlert(warning);
+    if (!this.leader) return gameAlert(t("need_leader"));
     gameMode = "online";
     readyButtonElem.classList.add("ready");
     customizationElem.classList.add("noclick");
@@ -3739,7 +3823,8 @@ class DeckMaker {
 
   startOffline() {
     let warning = this.deckWarning();
-    if (warning) return alert(warning);
+    if (warning) return gameAlert(warning);
+    if (!this.leader) return gameAlert(t("need_leader"));
 
     gameMode = "offline";
     let me_deck = {
@@ -3814,7 +3899,7 @@ class DeckMaker {
       try {
         this.deckFromJSON(e.target.result);
       } catch (e) {
-        alert(t("deck_bad_format"));
+        gameAlert(t("deck_bad_format"));
       }
     };
     fr.readAsText(files.item(0));
@@ -3823,18 +3908,18 @@ class DeckMaker {
 
   // Creates a deck from a JSON file's contents and sets that as the current deck
   // Notifies client with warnings if the deck is invalid
-  deckFromJSON(json) {
+  async deckFromJSON(json) {
     let deck;
     try {
       deck = JSON.parse(json);
     } catch (e) {
-      alert(t("deck_unparsable"));
+      gameAlert(t("deck_unparsable"));
       return;
     }
     let warning = "";
     if (card_dict[deck.leader].row !== "leader")
       warning += tf("not_a_leader", { name: card_dict[deck.leader].name });
-    if (deck.faction != card_dict[deck.leader].deck)
+    if (!accountProfile && deck.faction != card_dict[deck.leader].deck)
       warning += tf("leader_faction_mismatch", {
         name: card_dict[deck.leader].name,
         faction: factionField(deck.faction, "name") || deck.faction,
@@ -3847,7 +3932,11 @@ class DeckMaker {
           warning += "ID " + c[0] + " does not correspond to a card.\n";
           return false;
         }
+        const cap = accountProfile
+          ? accountProfile.owned[card.filename] || 0
+          : Number(card.count);
         if (
+          !accountProfile &&
           ![deck.faction, "neutral", "special", "weather"].includes(card.deck)
         ) {
           warning += tf("card_wrong_faction", {
@@ -3856,10 +3945,10 @@ class DeckMaker {
           });
           return false;
         }
-        if (card.count < c[1]) {
+        if (cap < c[1]) {
           warning += tf("too_many_copies", {
             have: c[1],
-            max: card.count,
+            max: cap,
             name: card.name,
           });
           return false;
@@ -3868,23 +3957,33 @@ class DeckMaker {
       })
       .map((c) => ({
         index: c[0],
-        count: Math.min(c[1], card_dict[c[0]].count),
+        count: Math.min(
+          c[1],
+          accountProfile
+            ? accountProfile.owned[card_dict[c[0]].filename] || 0
+            : card_dict[c[0]].count,
+        ),
       }));
 
-    if (warning && !confirm(warning + t("import_continue"))) return;
+    if (warning && !(await gameConfirm(warning + t("import_continue")))) return;
     this.setFaction(deck.faction, true);
     netSend(
       JSON.stringify({ type: "opChangeFaction", faction: deck.faction }),
     );
-    if (
-      card_dict[deck.leader].row === "leader" &&
-      deck.faction === card_dict[deck.leader].deck
-    ) {
+    var importedLeader = card_dict[deck.leader];
+    var leaderOk =
+      importedLeader.row === "leader" &&
+      (accountProfile
+        ? (accountProfile.owned[importedLeader.filename] || 0) > 0
+        : deck.faction === importedLeader.deck);
+    if (leaderOk) {
       this.leader = this.leaders.find((c) => c.index === deck.leader);
-      this.leader_elem.children[1].style.backgroundImage = largeURL(
-        this.leader.card.deck + "_" + this.leader.card.filename,
-      );
-      paintLargeCard(this.leader_elem.children[1], this.leader.card);
+      if (this.leader) {
+        this.leader_elem.children[1].style.backgroundImage = largeURL(
+          this.leader.card.deck + "_" + this.leader.card.filename,
+        );
+        paintLargeCard(this.leader_elem.children[1], this.leader.card);
+      }
     }
     this.makeBank(deck.faction, cards);
     this.update();
@@ -4100,11 +4199,25 @@ function removeCircularReferences(obj) {
   );
 }
 
+function setPreviewCount(elem, n) {
+  if (!elem) return;
+  var count = elem.querySelector(":scope > .card-count");
+  if (!count) {
+    count = document.createElement("div");
+    count.className = "card-count";
+    elem.appendChild(count);
+  }
+  count.textContent = n;
+}
+
 function createCardElement(card) {
   let elem = document.createElement("div");
   elem.style.backgroundImage = smallURL(card.faction + "_" + card.filename);
   elem.classList.add("card");
   elem.addEventListener("click", () => ui.selectCard(card), false);
+  elem.addEventListener("mouseover", function () {
+    tutorialNote(card);
+  });
 
   if (card.row === "leader") return elem;
 
@@ -4193,13 +4306,16 @@ function tocar(arquivo, pararMusica) {
     if (
       pararMusica &&
       ui.youtube &&
+      typeof ui.youtube.getPlayerState === "function" &&
+      typeof YT !== "undefined" &&
       ui.youtube.getPlayerState() === YT.PlayerState.PLAYING
     ) {
       ui.youtube.pauseVideo();
       ui.toggleMusic_elem.classList.add("fade");
     }
     lastSound = arquivo;
-    s.play();
+    var played = s.play();
+    if (played && typeof played.catch === "function") played.catch(function () {});
     setTimeout(function () {
       lastSound = "";
     }, 50);
@@ -4212,7 +4328,19 @@ function onYouTubeIframeAPIReady() {
   ui.initYouTube();
 }
 
+function loadYouTube() {
+  if (ui.youtube || ui.youtubeLoading) return;
+  ui.youtubeLoading = true;
+  var script = document.createElement("script");
+  script.src = "https://www.youtube.com/iframe_api";
+  document.body.appendChild(script);
+}
+
 function iniciarMusica() {
+  if (!ui.youtube || typeof ui.youtube.getPlayerState !== "function") {
+    loadYouTube();
+    return;
+  }
   try {
     if (ui.youtube.getPlayerState() !== YT.PlayerState.PLAYING) {
       ui.youtube.playVideo();
@@ -4232,6 +4360,7 @@ ui.enablePlayer(false);
 let dm = new DeckMaker();
 
 function cartaNaLinha(id, carta) {
+  tutorialNote(carta);
   if (id.charAt(0) == "f") {
     if (!carta.hero) {
       if (carta.name != "Decoy") {
@@ -4249,8 +4378,6 @@ function inicio() {
   for (var i = 0; i < classe.length; i++) classe[i].style.display = "none";
   iniciou = true;
   tocar("menu_opening", false);
-  // openFullscreen();
-  iniciarMusica();
 }
 
 var iniciou = false,
@@ -4301,6 +4428,170 @@ function startLoadingEffect() {
 function stopLoadingEffect() {
   passButton.classList.remove("loading");
 }
+
+var tutorialOn = false;
+var tutorialLive = false;
+var tutorialPhase = "deck";
+var tutorialStep = 0;
+var tutorialCpuPrev = "";
+var tutorialTarget = null;
+var TUTORIAL_DECK = [
+  { target: "faction-title", key: "tut_faction" },
+  { target: "card-bank", key: "tut_bank" },
+  { target: "card-deck", key: "tut_deck" },
+  { target: "card-leader", key: "tut_leader" },
+  { target: "deck-stats", key: "tut_limits" },
+  { target: "cpu-level", key: "tut_cpu" },
+  { target: "tutorial-game", key: "tut_choice", choice: true },
+];
+var TUTORIAL_MATCH = [
+  { target: "carousel", key: "tut_redraw" },
+  { target: "hand-row", key: "tut_hand" },
+  { target: "field-me", key: "tut_rows" },
+  { target: "panel-left", key: "tut_pass" },
+  { target: "stats-me", key: "tut_gems" },
+];
+
+function tutorialSteps() {
+  return tutorialPhase === "match" ? TUTORIAL_MATCH : TUTORIAL_DECK;
+}
+
+function clearTutorialTarget() {
+  if (tutorialTarget) tutorialTarget.classList.remove("tutorial-target");
+  tutorialTarget = null;
+}
+
+function tutorialKind(card) {
+  if (!card) return "";
+  if (card.row === "leader") return "leader";
+  var abs = card.abilities || [];
+  var last = abs.length ? String(abs[abs.length - 1]) : "";
+  if (last === "cerys") last = "muster";
+  if (last.indexOf("avenger") === 0) last = "avenger";
+  if (last === "scorch_c" || last === "scorch_r" || last === "scorch_s") last = "scorch";
+  var known = {
+    spy: 1, medic: 1, muster: 1, morale: 1, bond: 1, avenger: 1, scorch: 1,
+    horn: 1, decoy: 1, frost: 1, fog: 1, rain: 1, storm: 1, clear: 1,
+    mardroeme: 1, berserker: 1,
+  };
+  if (known[last]) return last;
+  if (card.hero) return "hero";
+  if (card.row === "agile") return "agile";
+  if (card.row === "close" || card.row === "ranged" || card.row === "siege" || card.row === "weather")
+    return "unit";
+  return "";
+}
+
+function tutorialNote(card) {
+  if (!tutorialOn || tutorialPhase !== "match" || !card) return;
+  var kind = tutorialKind(card);
+  var key = kind ? "tut_card_" + kind : "";
+  if (!key || !TEXTS.en[key]) return;
+  document.getElementById("tutorial-text").textContent = t(key);
+  var panel = document.getElementById("tutorial-panel");
+  panel.classList.add("match");
+  panel.classList.remove("hide");
+}
+
+function enterTutorialLive() {
+  if (!tutorialOn) return;
+  tutorialLive = true;
+  clearTutorialTarget();
+  var panel = document.getElementById("tutorial-panel");
+  panel.classList.add("match");
+  panel.classList.remove("hide");
+  document.getElementById("tutorial-text").textContent = t("tut_live");
+  document.getElementById("tutorial-next").classList.add("hide");
+  document.getElementById("tutorial-back").classList.add("hide");
+  document.getElementById("tutorial-play").classList.add("hide");
+  document.getElementById("tutorial-game").classList.add("on");
+}
+
+function renderTutorial() {
+  if (!tutorialOn) return;
+  if (tutorialLive) {
+    enterTutorialLive();
+    return;
+  }
+  var steps = tutorialSteps();
+  if (tutorialStep < 0) tutorialStep = 0;
+  if (tutorialStep >= steps.length) tutorialStep = steps.length - 1;
+  var step = steps[tutorialStep];
+  clearTutorialTarget();
+  var target = document.getElementById(step.target);
+  if (target) {
+    target.classList.add("tutorial-target");
+    tutorialTarget = target;
+  }
+  document.getElementById("tutorial-text").textContent = t(step.key);
+  var last = tutorialStep === steps.length - 1;
+  var next = document.getElementById("tutorial-next");
+  var play = document.getElementById("tutorial-play");
+  next.classList.toggle("hide", !!step.choice);
+  play.classList.toggle("hide", !step.choice);
+  next.setAttribute("data-i18n", last ? "tut_done" : "tut_next");
+  next.textContent = t(last ? "tut_done" : "tut_next");
+  document.getElementById("tutorial-back").classList.toggle("hide", tutorialStep === 0);
+  var panel = document.getElementById("tutorial-panel");
+  panel.classList.toggle("match", tutorialPhase === "match");
+  panel.classList.remove("hide");
+  document.getElementById("tutorial-game").classList.add("on");
+}
+
+function endTutorial() {
+  tutorialOn = false;
+  tutorialLive = false;
+  tutorialPhase = "deck";
+  tutorialStep = 0;
+  clearTutorialTarget();
+  document.getElementById("tutorial-panel").classList.add("hide");
+  document.getElementById("tutorial-game").classList.remove("on");
+  if (tutorialCpuPrev) {
+    cpuLevel = tutorialCpuPrev;
+    document.getElementById("cpu-level").value = tutorialCpuPrev;
+    tutorialCpuPrev = "";
+  }
+}
+
+function startTutorial() {
+  if (tutorialOn) {
+    endTutorial();
+    return;
+  }
+  tutorialOn = true;
+  tutorialLive = false;
+  tutorialPhase = "deck";
+  tutorialStep = 0;
+  renderTutorial();
+}
+
+function startTutorialMatch() {
+  tutorialCpuPrev = cpuLevel;
+  cpuLevel = "principiante";
+  document.getElementById("cpu-level").value = "principiante";
+  tutorialPhase = "match";
+  dm.startOffline();
+  if (gameMode !== "offline") {
+    tutorialPhase = "deck";
+    cpuLevel = tutorialCpuPrev;
+    document.getElementById("cpu-level").value = tutorialCpuPrev;
+    tutorialCpuPrev = "";
+    renderTutorial();
+    return;
+  }
+  tutorialStep = 0;
+  renderTutorial();
+}
+
+(function checkTutorial() {
+  TUTORIAL_DECK.concat(TUTORIAL_MATCH).forEach(function (step) {
+    if (!document.getElementById(step.target)) console.error("tutorial target", step.target);
+  });
+  ["unit", "hero", "agile", "spy", "medic", "muster", "morale", "bond", "avenger", "scorch", "horn", "decoy", "frost", "fog", "rain", "storm", "clear", "mardroeme", "berserker", "leader"].forEach(function (kind) {
+    if (!TEXTS.en["tut_card_" + kind] || !TEXTS.es["tut_card_" + kind])
+      console.error("tutorial card", kind);
+  });
+})();
 
 function refreshLocalized() {
   function paint(card) {
@@ -4368,4 +4659,24 @@ function refreshLocalized() {
       ui.preview.getElementsByClassName("card-description")[0],
     );
   }
+  if (tutorialOn) renderTutorial();
 }
+
+document.getElementById("tutorial-game").addEventListener("click", startTutorial);
+document.getElementById("tutorial-close").addEventListener("click", endTutorial);
+document.getElementById("tutorial-back").addEventListener("click", function () {
+  tutorialStep--;
+  renderTutorial();
+});
+document.getElementById("tutorial-next").addEventListener("click", function () {
+  if (tutorialStep >= tutorialSteps().length - 1) {
+    endTutorial();
+    return;
+  }
+  tutorialStep++;
+  renderTutorial();
+});
+document.getElementById("tutorial-play").addEventListener("click", startTutorialMatch);
+document.addEventListener("keydown", function (event) {
+  if (event.key === "Escape" && tutorialOn) endTutorial();
+});

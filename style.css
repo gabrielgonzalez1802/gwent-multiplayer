@@ -45,27 +45,63 @@ div.abs {
 }
 
 #very_start_bg1 {
+	overflow: hidden;
+	background: #000;
+}
+
+#very_start_bg1::before {
+	content: "";
+	position: absolute;
+	inset: 0;
 	background-image: url(img/start.jpg);
 	background-size: 100% auto;
 	background-repeat: no-repeat;
+	background-position: center top;
+	transform-origin: 64% 38%;
+	animation: splash-breath 16s ease-in-out infinite alternate;
+	pointer-events: none;
+}
+
+#very_start_bg1::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background:
+		radial-gradient(ellipse 38% 48% at 64% 36%, rgba(255, 160, 60, 0.16), transparent 62%),
+		radial-gradient(ellipse 75% 85% at 62% 42%, transparent 28%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+@keyframes splash-breath {
+	from { transform: scale(1); }
+	to { transform: scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#very_start_bg1::before {
+		animation: none;
+	}
 }
 
 #very_start_bg2 {
-	top: 3%;
+	top: 22%;
 	left: 2%;
-	width: 32%;
-	height: 94%;
-	border: solid 4px white;
+	width: 34%;
+	height: auto;
+	border: none;
 }
 
 #very_start {
-	position:absolute;
-	height:auto;
-	font-size: 20px;
-	color: #DDD;
+	position: absolute;
+	height: auto;
+	width: 100%;
+	font-size: 3.6vw;
+	line-height: 1.2;
+	color: #f2e6c8;
 	z-index: 3000;
 	text-align: center;
 	font-weight: bold;
+	text-shadow: 0 0.12vw 0.35vw #000, 0 0 1vw #000;
 }
 
 ::selection {
@@ -145,6 +181,7 @@ html {
 }
 
 #lang-toggle,
+#full-toggle,
 #rules-open,
 #aid-open {
 	height: 32px;
@@ -158,8 +195,31 @@ html {
 }
 
 #rules-open,
-#aid-open {
+#aid-open,
+#full-toggle {
 	color: goldenrod;
+}
+
+#full-toggle {
+	width: 32px;
+	padding: 0;
+	display: grid;
+	place-items: center;
+}
+
+#full-toggle svg {
+	width: 18px;
+	height: 18px;
+	display: block;
+}
+
+#full-toggle .full-exit,
+#full-toggle.is-full .full-enter {
+	display: none;
+}
+
+#full-toggle.is-full .full-exit {
+	display: block;
 }
 
 #rules-modal,
@@ -174,8 +234,61 @@ html {
 }
 
 #rules-modal.hide,
-#aid-modal.hide {
+#aid-modal.hide,
+#game-notice.hide {
 	display: none;
+}
+
+#game-notice {
+	position: fixed;
+	inset: 0;
+	z-index: 8000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.72);
+}
+
+#game-notice-panel {
+	width: min(440px, calc(100vw - 32px));
+	background: #12100e;
+	border: 2px ridge #5c4a32;
+	box-shadow: 0 0 24px rgba(0, 0, 0, 0.85);
+	color: #d7c7a6;
+	font-size: 15px;
+	font-family: Arial, sans-serif;
+	padding: 22px 22px 16px;
+}
+
+#game-notice-text {
+	margin: 0;
+	white-space: pre-line;
+	line-height: 1.45;
+	text-align: center;
+}
+
+#game-notice-panel > div {
+	display: flex;
+	justify-content: center;
+	gap: 10px;
+	margin-top: 18px;
+}
+
+#game-notice-yes,
+#game-notice-no {
+	height: 32px;
+	min-width: 88px;
+	padding: 0 14px;
+	color: #f0e2c0;
+	background: #141414;
+	border: 1px ridge #5c4a32;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+#game-notice-no {
+	color: #c4b39a;
+	border-color: #3a3328;
 }
 
 #rules-panel,
@@ -733,39 +846,49 @@ body.lang-es #notif-zerrikania::after {
 
 .card-es {
 	position: absolute;
-	left: 3%;
-	right: 3%;
-	top: 73.5%;
-	bottom: 2%;
+	left: 2.4%;
+	right: 2.4%;
+	top: 74.2%;
+	bottom: 0.7%;
 	z-index: 2;
 	display: flex;
 	flex-direction: column;
 	pointer-events: none;
 	overflow: hidden;
-	background: #e4dfd4;
+	background: transparent;
 	container-type: inline-size;
 }
 
 .card-es-name {
 	flex: 0 0 auto;
-	padding: 4% 6% 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 22%;
+	padding: 0 5%;
 	color: #161616;
+	background: #e1dcd0;
 	font-family: Georgia, "Times New Roman", serif;
-	font-size: 7cqw;
+	font-size: 8.2cqw;
 	font-weight: 700;
-	line-height: 1.15;
+	line-height: 1.05;
 	text-align: center;
 }
 
 .card-es-desc {
 	flex: 1 1 auto;
-	padding: 2% 7% 6%;
+	padding: 1% 5% 2%;
 	color: #161616;
+	background: #e1dcd0;
 	font-family: Georgia, "Times New Roman", serif;
-	font-size: 4.5cqw;
-	line-height: 1.15;
+	font-size: 6.4cqw;
+	line-height: 1.08;
 	text-align: center;
 	overflow: hidden;
+}
+
+.card-es-desc:empty {
+	background: transparent;
 }
 
 .card-array .card-lg div.card-count {
@@ -1703,6 +1826,16 @@ body.lang-es #notif-zerrikania::after {
 	color: #c4a574;
 }
 
+#deck-actions.account {
+	justify-content: center;
+}
+
+#deck-actions.account #upload-deck,
+#deck-actions.account #download-deck,
+#deck-actions.account #random-deck {
+	display: none;
+}
+
 #site-links {
     right: 5%;
     top: 5%;
@@ -2376,8 +2509,142 @@ body.lang-es #notif-zerrikania::after {
 	max-width: calc(100vw - 240px);
 }
 
-#lobby-bar.hide {
+#lobby-bar.hide,
+#account-bar.hide {
 	display: none;
+}
+
+#bet-panel,
+#reward-note {
+	position: fixed;
+	z-index: 90;
+	box-sizing: border-box;
+	font-size: 14px;
+	line-height: 1.35;
+	color: #eee;
+	background: rgba(0, 0, 0, 0.88);
+	border: 1px solid goldenrod;
+}
+
+#account-bar {
+	position: fixed;
+	z-index: 90;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	flex-wrap: nowrap;
+	justify-content: center;
+	gap: 8px;
+	align-items: center;
+	height: 32px;
+	font-size: 14px;
+	line-height: 1.35;
+	color: #eee;
+	white-space: nowrap;
+}
+
+#account-bar input,
+#account-bar select,
+#bet-panel select,
+#account-bar button,
+#bet-panel button {
+	height: 32px;
+	padding: 0 8px;
+	font-size: 14px;
+	color: #eee;
+	background: rgb(20, 20, 20);
+	border: 1px solid rgb(90, 70, 30);
+}
+
+#account-bar input {
+	width: 104px;
+}
+
+#bet-panel {
+	top: 64px;
+	left: 12px;
+	width: min(420px, calc(100vw - 24px));
+	padding: 10px 12px;
+}
+
+#bet-panel p,
+#reward-note {
+	margin: 6px 0 0;
+}
+
+#reward-note {
+	top: 56px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(560px, calc(100vw - 24px));
+	padding: 10px 12px;
+	text-align: center;
+	z-index: 7000;
+}
+
+#bet-controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+}
+
+#tutorial-panel {
+	position: fixed;
+	z-index: 4200;
+	left: 50%;
+	bottom: 18px;
+	transform: translateX(-50%);
+	box-sizing: border-box;
+	width: min(560px, calc(100vw - 24px));
+	padding: 14px 16px;
+	background: rgba(0, 0, 0, 0.94);
+	border: 1px solid goldenrod;
+	color: #eee;
+	font-size: 16px;
+	line-height: 1.35;
+}
+
+#tutorial-panel.hide {
+	display: none;
+}
+
+#tutorial-panel.match {
+	top: 52px;
+	bottom: auto;
+	z-index: 6000;
+}
+
+#tutorial-panel p {
+	margin: 0 0 12px;
+	font-size: 16px;
+	line-height: 1.35;
+}
+
+#tutorial-panel div {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+#tutorial-panel button {
+	height: 32px;
+	padding: 0 12px;
+	font-size: 14px;
+	color: #eee;
+	background: rgb(20, 20, 20);
+	border: 1px ridge rgb(30, 30, 30);
+	cursor: pointer;
+}
+
+#tutorial-panel button.hide {
+	display: none;
+}
+
+.tutorial-target {
+	outline: 3px solid goldenrod;
+	outline-offset: 3px;
 }
 
 #lobby-bar .hidden {
@@ -2396,7 +2663,8 @@ body.lang-es #notif-zerrikania::after {
 }
 
 #online-game.on,
-#custom-mode.on {
+#custom-mode.on,
+#tutorial-game.on {
 	color: goldenrod;
 }
 
@@ -2500,6 +2768,7 @@ body.lang-es #notif-zerrikania::after {
 #offline-game,
 #online-game,
 #custom-mode,
+#tutorial-game,
 #create-game {
 	position: static;
 	z-index: 87;
@@ -2535,7 +2804,7 @@ body.lang-es #notif-zerrikania::after {
 	border: 0.1vw ridge rgb(30,30,30);
 }
 
-#offline-game:hover, #online-game:hover, #custom-mode:hover, #join-game:hover, #confirm-join:hover, #create-game:hover, #start-game:hover, #cancel-game:hover {
+#offline-game:hover, #online-game:hover, #custom-mode:hover, #tutorial-game:hover, #join-game:hover, #confirm-join:hover, #create-game:hover, #start-game:hover, #cancel-game:hover {
   box-shadow: 0 0 rgba(0, 0, 0, 0.4);
   border-bottom-width: 2px;
   transform: translateY(2px);
@@ -2650,9 +2919,13 @@ body.lang-es #notif-zerrikania::after {
 
 .start-game_class {
 	white-space: nowrap;
-	color: #DDD;
+	color: #f2e6c8;
 	background-color: rgb(20, 20, 20);
-	border: .1vw ridge rgb(30, 30, 30);
+	border: 0.15vw ridge rgb(90, 70, 30);
+	font-size: 1.7vw;
+	padding: 0.55vw 1.5vw;
+	margin-top: 1.4vw;
+	cursor: pointer;
 }
 
 .card-contianer-title {
@@ -2805,4 +3078,209 @@ body.lang-es #notif-zerrikania::after {
 
 .noclick {
 	pointer-events: none !important;
+}
+
+#pack-show {
+	position: fixed;
+	inset: 0;
+	z-index: 8500;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.84);
+	font-size: 16px;
+	font-family: Arial, sans-serif;
+}
+
+#pack-show.hide {
+	display: none;
+}
+
+#pack-stage {
+	position: relative;
+	width: min(92vw, 760px);
+	height: min(88vh, 640px);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+}
+
+#pack-rays {
+	position: absolute;
+	left: 50%;
+	top: 58%;
+	width: 540px;
+	height: 540px;
+	margin: -270px 0 0 -270px;
+	border-radius: 50%;
+	background: repeating-conic-gradient(from 0deg, rgba(218, 165, 32, 0) 0 14deg, rgba(218, 165, 32, 0.45) 14deg 16deg);
+	opacity: 0;
+	transform: scale(0.35);
+	pointer-events: none;
+}
+
+#pack-stage.open #pack-rays {
+	opacity: 1;
+	animation: pack-spin 14s linear infinite;
+}
+
+#pack-flash {
+	position: absolute;
+	width: 70px;
+	height: 70px;
+	border-radius: 50%;
+	border: 3px solid goldenrod;
+	opacity: 0;
+	pointer-events: none;
+}
+
+#pack-stage.open #pack-flash {
+	animation: pack-flash 0.9s ease-out;
+}
+
+#pack-env {
+	position: relative;
+	width: 320px;
+	height: 180px;
+	margin-top: 6px;
+	z-index: 2;
+	perspective: 700px;
+	filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.6));
+	animation: pack-in 0.45s ease-out;
+}
+
+.env-back,
+.env-pocket,
+.env-flap,
+.env-seal {
+	position: absolute;
+}
+
+.env-back {
+	inset: 0;
+	background: linear-gradient(160deg, #f4e7d0, #c4a574);
+	border: 2px solid #8a6a32;
+	border-radius: 8px;
+}
+
+.env-flap {
+	left: 0;
+	right: 0;
+	top: 0;
+	height: 118px;
+	background: linear-gradient(180deg, #f3e4c6, #b89055);
+	clip-path: polygon(0 0, 100% 0, 50% 100%);
+	transform-origin: top center;
+	transition: transform 0.7s ease;
+	z-index: 5;
+	backface-visibility: hidden;
+}
+
+#pack-stage.open .env-flap {
+	transform: rotateX(188deg);
+	z-index: 1;
+}
+
+.env-seal {
+	width: 58px;
+	height: 58px;
+	left: 50%;
+	top: 82px;
+	margin-left: -29px;
+	border-radius: 50%;
+	background:
+		radial-gradient(circle at 50% 50%, transparent 0 9px, #6d4e16 10px 12px, transparent 13px),
+		radial-gradient(circle at 35% 32%, #f6dc8a, #a67c2d 58%, #6a4c16);
+	box-shadow: 0 0 0 4px rgba(90, 60, 20, 0.35);
+	z-index: 6;
+	transition: transform 0.35s ease, opacity 0.35s ease;
+}
+
+#pack-stage.open .env-seal {
+	transform: scale(1.6);
+	opacity: 0;
+}
+
+.env-pocket {
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 128px;
+	background: linear-gradient(#ead7b2, #c9aa74);
+	clip-path: polygon(0 42%, 50% 0, 100% 42%, 100% 100%, 0 100%);
+	border-radius: 0 0 6px 6px;
+	z-index: 4;
+}
+
+#pack-cards {
+	position: relative;
+	width: 100%;
+	height: 250px;
+	z-index: 3;
+}
+
+.pack-card {
+	position: absolute;
+	left: 50%;
+	bottom: 0;
+	width: 128px;
+	height: 242px;
+	margin-left: -64px;
+	border-radius: 10px;
+	background-color: #1a140e;
+	background-size: 100% 100%;
+	background-position: top center;
+	background-repeat: no-repeat;
+	container-type: inline-size;
+	box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55);
+	opacity: 0;
+	transform: translateY(170px) scale(0.5);
+	transition: transform 0.75s cubic-bezier(0.16, 0.84, 0.24, 1), opacity 0.35s ease;
+}
+
+#pack-stage.open .pack-card {
+	opacity: 1;
+	transform: translate(calc((var(--i) - var(--mid)) * 92px), 0) scale(1) rotate(var(--tilt, 0deg));
+}
+
+#pack-done {
+	position: absolute;
+	bottom: 10px;
+	z-index: 4;
+	height: 34px;
+	min-width: 96px;
+	padding: 0 16px;
+	color: #f0e2c0;
+	background: #141414;
+	border: 1px ridge #5c4a32;
+	font-size: 15px;
+	cursor: pointer;
+}
+
+@keyframes pack-in {
+	from { transform: translateY(24px) scale(0.86); opacity: 0; }
+	to { transform: none; opacity: 1; }
+}
+
+@keyframes pack-spin {
+	from { transform: scale(1) rotate(0deg); }
+	to { transform: scale(1) rotate(360deg); }
+}
+
+@keyframes pack-flash {
+	0% { opacity: 0.9; transform: scale(0.4); }
+	100% { opacity: 0; transform: scale(7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#pack-rays,
+	#pack-flash,
+	#pack-env,
+	.pack-card,
+	.env-flap,
+	.env-seal {
+		animation: none;
+		transition: none;
+	}
 }

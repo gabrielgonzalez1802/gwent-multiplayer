@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const WebSocket = require("ws");
+const account = require("./account");
 const WS_HOST = "0.0.0.0";
 const WS_PORT = process.env.PORT || 8080;
 const root = __dirname;
@@ -21,6 +22,10 @@ const fileTypes = {
 
 const httpServer = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(req.url.split("?")[0]);
+  if (urlPath.startsWith("/api/")) {
+    account.handleHttp(req, res, urlPath);
+    return;
+  }
   if (urlPath === "/") urlPath = "/index.html";
   const file = path.normalize(path.join(root, urlPath));
   if (file !== root && !file.startsWith(root + path.sep)) {
@@ -61,14 +66,23 @@ function generateCode(length = 4) {
 // Match client's reconnect attempts: 5 attempts * 3000ms = 15000ms; give a small buffer.
 const RECONNECT_WAIT_MS = 20000;
 
+account.init().catch((err) => console.log("MySQL: " + err.message));
+
 httpServer.listen(WS_PORT, WS_HOST, () => {
   console.log("## Server is up and running ##");
   console.log("http://127.0.0.1:" + WS_PORT);
 });
 
 wss.on("connection", (ws) => {
-  ws.on("message", (message) => {
-    const data = JSON.parse(message);
+  ws.on("message", async (message) => {
+    let data;
+    try {
+      data = JSON.parse(message);
+    } catch (err) {
+      return;
+    }
+    try {
+    if ((await account.onSocket(ws, data, sessions)) === "done") return;
 
     if (data.type === "connect") {
       ws.playerId = data?.id ?? generateCode(6);
@@ -123,6 +137,7 @@ wss.on("connection", (ws) => {
         code: sessionCode,
         playersReady: 0,
       };
+      account.touch(sessions[sessionCode]);
       ws.sessionCode = sessionCode;
       ws.send(JSON.stringify({ type: "sessionCreated", code: sessionCode }));
       console.log(`# Player ${ws.playerId} created Session ${sessionCode}`);
@@ -136,6 +151,7 @@ wss.on("connection", (ws) => {
       if (!sessions[sessionCode]) return;
 
       console.log(`# Player ${ws.playerId} cancelled Session ${sessionCode}`);
+      await account.forfeit(sessions[sessionCode], ws.playerId);
       // clear any pending reconnect timers for that session
       Object.keys(disconnectedPlayers).forEach((pid) => {
         if (disconnectedPlayers[pid].code === sessionCode) {
@@ -153,6 +169,7 @@ wss.on("connection", (ws) => {
       if (!sessions[sessionCode]) return;
 
       console.log(`# Player ${ws.playerId} left Session ${sessionCode}`);
+      await account.forfeit(sessions[sessionCode], ws.playerId);
       sessions[sessionCode].players = sessions[sessionCode].players.filter(
         (player) => player !== ws,
       );
@@ -172,6 +189,8 @@ wss.on("connection", (ws) => {
             JSON.stringify({ type: "sessionReady", player: index + 1 }),
           );
         });
+        account.touch(sessions[sessionCode]);
+        account.sendBet(sessions[sessionCode]);
       } else {
         ws.send(JSON.stringify({ type: "sessionInvalid" }));
         console.log(
@@ -184,6 +203,7 @@ wss.on("connection", (ws) => {
     if (data.type === "gameStart") {
       if (ws.sessionCode && sessions[ws.sessionCode]) {
         const session = sessions[ws.sessionCode];
+        account.matchBegan(session);
         if (!sessions[ws.sessionCode]?.firstPlayer) {
           const firstPlayer =
             session.players[Math.floor(Math.random() * session.players.length)]
@@ -223,6 +243,9 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (data.type === "play" || data.type === "useLeader") account.notePlay(ws, sessions);
+    if (data.type === "ready" && !(await account.allowReady(ws, data, sessions))) return;
+
     // Relay messages to the other player in the same session
     if (ws.sessionCode) {
       const sessionPlayers = sessions[ws.sessionCode]?.players || [];
@@ -231,6 +254,9 @@ wss.on("connection", (ws) => {
           player.send(JSON.stringify(data));
         }
       });
+    }
+    } catch (err) {
+      console.log("message: " + err.message);
     }
   });
 
@@ -242,25 +268,25 @@ wss.on("connection", (ws) => {
       const session = sessions[ws.sessionCode];
       // mark disconnected and wait for reconnection
       const timeoutId = setTimeout(() => {
-        // if still disconnected after wait, delete session (notify remaining)
-        if (disconnectedPlayers[ws.playerId] && sessions[ws.sessionCode]) {
-          const sess = sessions[ws.sessionCode];
-          const other = sess.players.find((p) => p.playerId !== ws.playerId);
+        const loserId = ws.playerId;
+        const code = ws.sessionCode;
+        if (!disconnectedPlayers[loserId] || !sessions[code]) return;
+        const sess = sessions[code];
+        Promise.resolve(account.forfeit(sess, loserId)).finally(() => {
+          if (!sessions[code]) return;
+          const other = sess.players.find((p) => p.playerId !== loserId);
           if (other && other.readyState === WebSocket.OPEN) {
             other.send(JSON.stringify({ type: "sessionDeleted" }));
           }
-          console.log(
-            `# Session ${ws.sessionCode} deleted due to no reconnection`,
-          );
-          // cleanup any disconnected entries for this session
+          console.log(`# Session ${code} deleted due to no reconnection`);
           Object.keys(disconnectedPlayers).forEach((pid) => {
-            if (disconnectedPlayers[pid].code === ws.sessionCode) {
+            if (disconnectedPlayers[pid].code === code) {
               clearTimeout(disconnectedPlayers[pid].timeoutId);
               delete disconnectedPlayers[pid];
             }
           });
-          delete sessions[ws.sessionCode];
-        }
+          delete sessions[code];
+        });
       }, RECONNECT_WAIT_MS);
 
       disconnectedPlayers[ws.playerId] = { code: ws.sessionCode, timeoutId };

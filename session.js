@@ -247,7 +247,7 @@ function joinGame() {
         btnConfirmJoin.classList.add("hidden");
         joinedSessionId = sessionCode;
       } else {
-        alert("Invalid session");
+        gameAlert(t("session_bad"));
         joinedSessionId = null;
       }
     }
