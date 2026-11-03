@@ -4631,6 +4631,105 @@ function movePlayTarget(delta) {
   targets[keyRow].classList.add("key-pick");
 }
 
+var keyDeckEl = null;
+
+function deckScreenOn() {
+  return customizationElem && !customizationElem.classList.contains("hide") && customizationElem.style.display !== "none";
+}
+
+function visibleDeckCards() {
+  var out = [];
+  ["card-bank", "card-deck"].forEach(function (id) {
+    var root = document.getElementById(id);
+    if (!root) return;
+    Array.prototype.forEach.call(root.children, function (el) {
+      if (el.classList.contains("card-lg") && !el.classList.contains("hide")) out.push(el);
+    });
+  });
+  return out;
+}
+
+function nearestDeckCard(from, dx, dy) {
+  var cards = visibleDeckCards();
+  var origin = from.getBoundingClientRect();
+  var ox = origin.left + origin.width / 2;
+  var oy = origin.top + origin.height / 2;
+  var best = null;
+  var bestScore = Infinity;
+  for (var i = 0; i < cards.length; i++) {
+    var el = cards[i];
+    if (el === from) continue;
+    var rect = el.getBoundingClientRect();
+    var vx = rect.left + rect.width / 2 - ox;
+    var vy = rect.top + rect.height / 2 - oy;
+    if (dx && Math.sign(vx) !== dx) continue;
+    if (dy && Math.sign(vy) !== dy) continue;
+    var along = dx ? Math.abs(vx) : Math.abs(vy);
+    var cross = dx ? Math.abs(vy) : Math.abs(vx);
+    if (along < 4) continue;
+    if (cross > along * 1.2) continue;
+    var score = along + cross * 2;
+    if (score < bestScore) {
+      bestScore = score;
+      best = el;
+    }
+  }
+  return best;
+}
+
+function showDeckPick(el) {
+  clearKeyPick();
+  keyDeckEl = el;
+  if (!el) return;
+  el.classList.add("key-pick");
+  var scroller = el.parentElement;
+  if (!scroller) return;
+  var er = el.getBoundingClientRect();
+  var sr = scroller.getBoundingClientRect();
+  if (er.top < sr.top) scroller.scrollTop -= sr.top - er.top;
+  else if (er.bottom > sr.bottom) scroller.scrollTop += er.bottom - sr.bottom;
+}
+
+function pickDeck(dx, dy) {
+  var cards = visibleDeckCards();
+  if (!cards.length) return;
+  if (!keyDeckEl || keyDeckEl.classList.contains("hide") || cards.indexOf(keyDeckEl) < 0) {
+    showDeckPick(cards[0]);
+    return;
+  }
+  var next = dx || dy ? nearestDeckCard(keyDeckEl, dx, dy) : keyDeckEl;
+  showDeckPick(next || keyDeckEl);
+}
+
+function clickDeck() {
+  var el = keyDeckEl;
+  if (!el || el.classList.contains("hide")) {
+    pickDeck(0, 0);
+    return;
+  }
+  var parentId = el.parentElement ? el.parentElement.id : "";
+  var before = [];
+  var root = document.getElementById(parentId);
+  if (root) {
+    Array.prototype.forEach.call(root.children, function (child) {
+      if (child.classList.contains("card-lg") && !child.classList.contains("hide")) before.push(child);
+    });
+  }
+  var at = before.indexOf(el);
+  el.click();
+  if (!el.classList.contains("hide")) {
+    showDeckPick(el);
+    return;
+  }
+  var after = [];
+  if (root) {
+    Array.prototype.forEach.call(root.children, function (child) {
+      if (child.classList.contains("card-lg") && !child.classList.contains("hide")) after.push(child);
+    });
+  }
+  showDeckPick(after[Math.min(Math.max(at, 0), after.length - 1)] || visibleDeckCards()[0] || null);
+}
+
 document.addEventListener("keydown", function (event) {
   if (keyTyping(event) || keyBlocked()) return;
   var carousel = document.getElementById("carousel");
@@ -4645,6 +4744,15 @@ document.addEventListener("keydown", function (event) {
       event.preventDefault();
       Carousel.curr.select(event);
     }
+    return;
+  }
+  if (deckScreenOn() && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Enter")) {
+    event.preventDefault();
+    if (event.key === "ArrowLeft") pickDeck(-1, 0);
+    else if (event.key === "ArrowRight") pickDeck(1, 0);
+    else if (event.key === "ArrowUp") pickDeck(0, -1);
+    else if (event.key === "ArrowDown") pickDeck(0, 1);
+    else if (!event.repeat) clickDeck();
     return;
   }
   if (!myKeyTurn()) return;

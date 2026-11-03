@@ -1714,6 +1714,12 @@ body.lang-es #notif-zerrikania::after {
 	z-index: 2;
 }
 
+.card-array .card-lg.key-pick {
+	outline: .18vw solid #f2e6c8;
+	outline-offset: .12vw;
+	z-index: 2;
+}
+
 .row-selectable.key-pick,
 .row-selectable > .card.key-pick {
 	box-shadow: 0 0 .45vw #f2e6c8;
