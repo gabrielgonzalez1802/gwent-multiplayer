@@ -35,6 +35,9 @@ async function onSocketMessage(event) {
         JSON.stringify({ type: "opChangeFaction", faction: dm.faction }),
       );
       break;
+    case "sessionRules":
+      applySessionRules(data);
+      break;
     case "sessionDeleted":
       Carousel.curr?.cancel();
       ui.enablePlayer(true);
@@ -2620,6 +2623,46 @@ function syncWeatherField() {
     row.classList.toggle("hide", document.getElementById("rule-weather").value === "no");
 }
 
+function publishRules() {
+  if (typeof createdSessionId === "undefined" || !createdSessionId) return;
+  netSend(JSON.stringify({ type: "setRules", custom: customMode, rules: activeRules() }));
+}
+
+function setRuleInput(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.value = value == null ? "" : String(value);
+}
+
+function applySessionRules(data) {
+  const rules = data.rules || {};
+  customMode = !!data.custom;
+  document.getElementById("custom-mode").classList.toggle("on", customMode);
+  document.getElementById("custom-panel").classList.toggle("hide", !customMode);
+  setRuleInput("rule-units", rules.minUnits);
+  setRuleInput("rule-units-max", rules.maxUnits);
+  setRuleInput("rule-deck", rules.maxDeck);
+  setRuleInput("rule-special", rules.maxSpecial);
+  setRuleInput("rule-heroes", rules.maxHeroes);
+  setRuleInput("rule-spies", rules.maxSpies);
+  setRuleInput("rule-strength", rules.maxStrength);
+  if (rules.maxWeather === 0) {
+    document.getElementById("rule-weather").value = "no";
+    setRuleInput("rule-weather-max", "");
+  } else {
+    document.getElementById("rule-weather").value = "yes";
+    setRuleInput("rule-weather-max", rules.maxWeather);
+  }
+  syncWeatherField();
+  if (typeof dm !== "undefined" && dm.updateStats) dm.updateStats();
+  if (amReady) {
+    amReady = false;
+    readyButtonElem.classList.remove("ready");
+    customizationElem.classList.remove("noclick");
+    netSend(JSON.stringify({ type: "unReady" }));
+  }
+  if (typeof showReward === "function") showReward(t("rules_host"));
+}
+
 function activeRules() {
   if (!customMode) {
     return {
@@ -3285,30 +3328,38 @@ class DeckMaker {
       } catch (e) {}
     });
     document.getElementById("custom-mode").addEventListener("click", () => {
+      if (typeof joinedSessionId !== "undefined" && joinedSessionId) return;
       customMode = !customMode;
       document.getElementById("custom-mode").classList.toggle("on", customMode);
       document.getElementById("custom-panel").classList.toggle("hide", !customMode);
       this.updateStats();
+      publishRules();
     });
     document.getElementById("custom-panel").addEventListener("input", () => {
+      if (typeof joinedSessionId !== "undefined" && joinedSessionId) return;
       if (customMode) this.updateStats();
+      publishRules();
     });
     document.getElementById("rule-weather").addEventListener("change", () => {
+      if (typeof joinedSessionId !== "undefined" && joinedSessionId) return;
       syncWeatherField();
       if (customMode) this.updateStats();
+      publishRules();
     });
     document.getElementById("rule-reset").addEventListener("click", () => {
+      if (typeof joinedSessionId !== "undefined" && joinedSessionId) return;
       document.getElementById("rule-units").value = 22;
       document.getElementById("rule-units-max").value = "";
       document.getElementById("rule-deck").value = "";
       document.getElementById("rule-special").value = 10;
       document.getElementById("rule-heroes").value = "";
       document.getElementById("rule-spies").value = "";
-    document.getElementById("rule-strength").value = "";
-    document.getElementById("rule-weather").value = "yes";
-    document.getElementById("rule-weather-max").value = "";
-    syncWeatherField();
-    this.updateStats();
+      document.getElementById("rule-strength").value = "";
+      document.getElementById("rule-weather").value = "yes";
+      document.getElementById("rule-weather-max").value = "";
+      syncWeatherField();
+      this.updateStats();
+      publishRules();
     });
     document
       .getElementById("add-file")

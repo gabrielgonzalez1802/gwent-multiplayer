@@ -219,7 +219,7 @@ function createGame() {
 
   btnReadyElem.classList.remove("hidden");
   btnCancelElem.classList.remove("hidden");
-  socket.send(JSON.stringify({ type: "createSession" }));
+  socket.send(JSON.stringify({ type: "createSession", custom: customMode, rules: activeRules() }));
   if (typeof placeAccount === "function") placeAccount();
   clearTimeout(createWatch);
   createWatch = setTimeout(() => {

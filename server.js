@@ -53,6 +53,39 @@ let players = [];
 let disconnectedPlayers = {}; // { [playerId]: { code, timeoutId } }
 
 // Helper function to generate a random character sequence
+function cleanRules(raw) {
+  const out = {
+    minUnits: 22,
+    maxUnits: null,
+    maxDeck: null,
+    maxSpecial: 10,
+    maxHeroes: null,
+    maxSpies: null,
+    maxStrength: null,
+    maxWeather: null,
+  };
+  if (!raw || typeof raw !== "object") return out;
+  Object.keys(out).forEach((key) => {
+    if (raw[key] == null) return;
+    const n = Math.floor(Number(raw[key]));
+    if (Number.isFinite(n) && n >= 0 && n <= 400) out[key] = n;
+  });
+  return out;
+}
+(function () {
+  const sample = cleanRules({ minUnits: 10, maxHeroes: 1, maxWeather: 0, junk: 9 });
+  if (sample.minUnits !== 10 || sample.maxHeroes !== 1 || sample.maxWeather !== 0 || sample.maxSpecial !== 10)
+    throw new Error("reglas");
+})();
+
+function pushRules(session, except) {
+  if (!session || !session.rules) return;
+  const msg = JSON.stringify({ type: "sessionRules", custom: !!session.custom, rules: session.rules });
+  session.players.forEach((player) => {
+    if (player !== except && player.readyState === 1) player.send(msg);
+  });
+}
+
 function generateCode(length = 4) {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
@@ -136,6 +169,8 @@ wss.on("connection", (ws) => {
         players: [ws],
         code: sessionCode,
         playersReady: 0,
+        custom: !!data.custom,
+        rules: cleanRules(data.rules),
       };
       account.touch(sessions[sessionCode]);
       ws.sessionCode = sessionCode;
@@ -143,6 +178,15 @@ wss.on("connection", (ws) => {
       console.log(`# Player ${ws.playerId} created Session ${sessionCode}`);
 
       ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode }));
+      return;
+    }
+
+    if (data.type === "setRules") {
+      const session = sessions[ws.sessionCode];
+      if (!session || session.players[0] !== ws) return;
+      session.custom = !!data.custom;
+      session.rules = cleanRules(data.rules);
+      pushRules(session, ws);
       return;
     }
 
@@ -197,6 +241,7 @@ wss.on("connection", (ws) => {
         });
         account.touch(sessions[sessionCode]);
         account.sendBet(sessions[sessionCode]);
+        pushRules(sessions[sessionCode], host);
       } else {
         ws.send(JSON.stringify({ type: "sessionInvalid" }));
         console.log(

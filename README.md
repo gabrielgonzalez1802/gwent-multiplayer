@@ -40,7 +40,7 @@ Custom is a separate switch. It can set a minimum and maximum of units, a maximu
 
 Random deck builds a deck for the current faction inside whichever limits are active, classic or custom. The leader stays in that faction. If the limits cannot be met, the message says what that faction would need. Empty deck sends every card back to the collection and does not change the leader.
 
-Against the CPU, both decks follow the active limits. Online, each player checks their own deck with their own Custom switch. Those limits are not sent with the session code.
+Against the CPU, both decks follow the active limits. Online, the player who creates the session sets the limits. The other player receives those limits and their deck is checked against them.
 
 ## Language
 
