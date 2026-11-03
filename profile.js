@@ -332,7 +332,19 @@ onSocketMessage = async function (event) {
 };
 if (socket) socket.onmessage = onSocketMessage;
 
+function accountBusy(busy) {
+  ["account-register", "account-login"].forEach(function (id) {
+    var button = document.getElementById(id);
+    button.disabled = busy;
+    button.classList.toggle("disabled", busy);
+  });
+  document.getElementById("account-register").textContent = busy ? t("acc_wait") : t("acc_register");
+  document.getElementById("account-login").textContent = busy ? t("acc_wait") : t("acc_login");
+}
+
 document.getElementById("account-register").addEventListener("click", function () {
+  var register = document.getElementById("account-register");
+  if (register.disabled) return;
   var name = document.getElementById("account-name").value.trim();
   var password = document.getElementById("account-pass").value;
   var faction = document.getElementById("account-faction").value;
@@ -340,7 +352,9 @@ document.getElementById("account-register").addEventListener("click", function (
     showReward(t("acc_need"));
     return;
   }
+  accountBusy(true);
   accountApi("/api/register", { name: name, password: password, faction: faction }).then(function (data) {
+    accountBusy(false);
     if (!data.ok) {
       showReward(accountError(data.error));
       return;
@@ -348,13 +362,20 @@ document.getElementById("account-register").addEventListener("click", function (
     acceptAccount(data);
     showReward("");
     document.getElementById("reward-note").classList.add("hide");
-  }).catch(function () { showReward(t("acc_db")); });
+  }).catch(function () {
+    accountBusy(false);
+    showReward(t("acc_db"));
+  });
 });
 
 document.getElementById("account-login").addEventListener("click", function () {
+  var login = document.getElementById("account-login");
+  if (login.disabled) return;
   var name = document.getElementById("account-name").value.trim();
   var password = document.getElementById("account-pass").value;
+  accountBusy(true);
   accountApi("/api/login", { name: name, password: password }).then(function (data) {
+    accountBusy(false);
     if (!data.ok) {
       showReward(accountError(data.error));
       return;
@@ -362,7 +383,10 @@ document.getElementById("account-login").addEventListener("click", function () {
     acceptAccount(data);
     showReward("");
     document.getElementById("reward-note").classList.add("hide");
-  }).catch(function () { showReward(t("acc_db")); });
+  }).catch(function () {
+    accountBusy(false);
+    showReward(t("acc_db"));
+  });
 });
 
 document.getElementById("account-logout").addEventListener("click", function () {
