@@ -221,7 +221,7 @@ wss.on("connection", (ws) => {
     }
 
     if (data.type === "joinSession") {
-      const sessionCode = data.code;
+      const sessionCode = String(data.code || "").trim().toUpperCase();
       if (sessions[sessionCode] && sessions[sessionCode].players.length === 1) {
         const host = sessions[sessionCode].players[0];
         if (!account.sameSide(host, ws)) {

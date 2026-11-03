@@ -52,6 +52,13 @@ btnConfirmJoin.classList.add("hidden");
 const inputGroup = document.getElementById("join-input");
 const inputField = document.getElementById("session-input");
 inputField.value = "";
+inputField.addEventListener("input", function () {
+  var next = inputField.value.toUpperCase();
+  if (next === inputField.value) return;
+  var pos = inputField.selectionStart;
+  inputField.value = next;
+  if (pos != null) inputField.setSelectionRange(pos, pos);
+});
 
 const sessionIdDiv = document.getElementById("session-id");
 sessionIdDiv.addEventListener("click", () => copySessionId());
@@ -237,41 +244,47 @@ function joinGame() {
   inputGroup.classList.remove("hidden");
   if (typeof placeAccount === "function") placeAccount();
 
+  if (btnConfirmJoin.dataset.bound) return;
+  btnConfirmJoin.dataset.bound = "1";
   btnConfirmJoin.addEventListener("click", async () => {
-    const sessionCode = inputField.value.trim();
+    if (btnConfirmJoin.disabled) return;
+    const sessionCode = inputField.value.trim().toUpperCase();
+    if (!sessionCode.length) return;
 
-    if (sessionCode.length) {
-      socket.send(JSON.stringify({ type: "joinSession", code: sessionCode }));
-      const joined = await findSession();
+    btnConfirmJoin.disabled = true;
+    socket.send(JSON.stringify({ type: "joinSession", code: sessionCode }));
+    const joined = await findSession();
+    btnConfirmJoin.disabled = false;
 
-      if (joined) {
-        btnReadyElem.classList.remove("hidden");
-        inputGroup.classList.add("hidden");
-        btnConfirmJoin.classList.add("hidden");
-        joinedSessionId = sessionCode;
-      } else {
-        gameAlert(t(joined === "mix" ? "session_mix" : "session_bad"));
-        joinedSessionId = null;
-      }
+    if (joined === true) {
+      if (typeof clearHold === "function") clearHold();
+      btnReadyElem.classList.remove("hidden");
+      inputGroup.classList.add("hidden");
+      btnConfirmJoin.classList.add("hidden");
+      joinedSessionId = sessionCode;
+    } else {
+      if (joined === "mix" && typeof showHold === "function") showHold(t("session_mix"));
+      else gameAlert(t(joined === "mix" ? "session_mix" : "session_bad"));
+      joinedSessionId = null;
     }
   });
 }
 
 async function findSession() {
   return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      socket.removeEventListener("message", handleMessage);
+      resolve(false);
+    }, 8000);
     const handleMessage = (event) => {
       const data = JSON.parse(event.data);
 
-      if (data.type === "sessionJoined") {
-        socket.removeEventListener("message", handleMessage);
-        resolve(true);
-      } else if (data.type === "sessionMismatch") {
-        socket.removeEventListener("message", handleMessage);
-        resolve("mix");
-      } else if (data.type === "sessionInvalid") {
-        socket.removeEventListener("message", handleMessage);
-        resolve(false);
-      }
+      if (data.type !== "sessionJoined" && data.type !== "sessionMismatch" && data.type !== "sessionInvalid") return;
+      clearTimeout(timer);
+      socket.removeEventListener("message", handleMessage);
+      if (data.type === "sessionJoined") resolve(true);
+      else if (data.type === "sessionMismatch") resolve("mix");
+      else resolve(false);
     };
 
     socket.addEventListener("message", handleMessage);

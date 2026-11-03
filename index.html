@@ -325,7 +325,8 @@
           id="session-input"
           maxlength="4"
           name="session-input"
-          oninput="let p=this.selectionStart;this.value=this.value.toUpperCase();this.setSelectionRange(p, p);"
+          autocapitalize="characters"
+          spellcheck="false"
         />
       </span>
       <button id="confirm-join" data-i18n="join">Join</button>
