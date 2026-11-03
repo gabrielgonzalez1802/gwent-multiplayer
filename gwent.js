@@ -760,6 +760,7 @@ class Row extends CardContainer {
     this.elem_special = elem.getElementsByClassName("row-special")[0];
     this.special = null;
     this.total = 0;
+    this.halfWeather = false;
     this.effects = {
       weather: false,
       bond: {},
@@ -914,7 +915,7 @@ class Row extends CardContainer {
     if (card.name === "decoy") return 0;
     let total = card.basePower;
     if (card.hero) return total;
-    if (this.effects.weather) total = Math.min(1, total);
+    if (this.effects.weather) total = weatheredPower(total, this.halfWeather);
     if (game.doubleSpyPower && card.abilities.includes("spy")) total *= 2;
     let bond = this.effects.bond[card.id()];
     if (isNumber(bond) && bond > 1) total *= Number(bond);
@@ -980,6 +981,7 @@ class Row extends CardContainer {
       this.elem_special.removeChild(this.elem_speical.firstChild);
     this.total = 0;
     //["rain","fog","frost"].forEach( w => this.removeOverlay(w) );
+    this.halfWeather = false;
     this.effects = {
       weather: false,
       bond: {},
@@ -4149,6 +4151,17 @@ function smallURL(name, ext = "jpg") {
 function imgURL(path, ext) {
   return "url('img/" + path + "." + ext;
 }
+
+// A unit under weather drops to 1. With King Bran it keeps half, rounded up.
+function weatheredPower(total, half) {
+  total = Number(total) || 0;
+  if (half) return Math.ceil(total / 2);
+  return Math.min(1, total);
+}
+(function () {
+  if (weatheredPower(6, false) !== 1 || weatheredPower(6, true) !== 3) throw new Error("clima bran");
+  if (weatheredPower(5, true) !== 3 || weatheredPower(1, true) !== 1) throw new Error("clima bran");
+})();
 
 // Returns true if n is an Number
 function isNumber(n) {
