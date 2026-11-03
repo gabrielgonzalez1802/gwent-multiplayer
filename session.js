@@ -65,6 +65,7 @@ function showOnlineControls() {
     btnCreateElem.classList.remove("hidden");
     btnJoinElem.classList.remove("hidden");
   }
+  if (typeof placeAccount === "function") placeAccount();
 }
 
 function markOnline() {
@@ -219,6 +220,7 @@ function createGame() {
   btnReadyElem.classList.remove("hidden");
   btnCancelElem.classList.remove("hidden");
   socket.send(JSON.stringify({ type: "createSession" }));
+  if (typeof placeAccount === "function") placeAccount();
   clearTimeout(createWatch);
   createWatch = setTimeout(() => {
     if (!createdSessionId) showServerDown();
@@ -233,6 +235,7 @@ function joinGame() {
   btnCancelElem.classList.remove("hidden");
   btnConfirmJoin.classList.remove("hidden");
   inputGroup.classList.remove("hidden");
+  if (typeof placeAccount === "function") placeAccount();
 
   btnConfirmJoin.addEventListener("click", async () => {
     const sessionCode = inputField.value.trim();
@@ -247,7 +250,7 @@ function joinGame() {
         btnConfirmJoin.classList.add("hidden");
         joinedSessionId = sessionCode;
       } else {
-        gameAlert(t("session_bad"));
+        gameAlert(t(joined === "mix" ? "session_mix" : "session_bad"));
         joinedSessionId = null;
       }
     }
@@ -262,6 +265,9 @@ async function findSession() {
       if (data.type === "sessionJoined") {
         socket.removeEventListener("message", handleMessage);
         resolve(true);
+      } else if (data.type === "sessionMismatch") {
+        socket.removeEventListener("message", handleMessage);
+        resolve("mix");
       } else if (data.type === "sessionInvalid") {
         socket.removeEventListener("message", handleMessage);
         resolve(false);
@@ -296,6 +302,7 @@ function cancelSession() {
     );
     joinedSessionId = null;
   }
+  if (typeof placeAccount === "function") placeAccount();
 }
 
 function copySessionId() {

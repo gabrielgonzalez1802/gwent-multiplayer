@@ -239,7 +239,7 @@ function undoReady(reason) {
   amReady = false;
   readyButtonElem.classList.remove("ready");
   customizationElem.classList.remove("noclick");
-  showReward(reason === "deck" ? t("bet_deck") : t("bet_wait"));
+  showReward(reason === "deck" ? t("bet_deck") : reason === "mix" ? t("session_mix") : t("bet_wait"));
 }
 
 function takeRewards(data) {
@@ -276,6 +276,18 @@ onSocketMessage = async function (event) {
   var data = JSON.parse(event.data);
   if (data.type === "welcome" && accountToken())
     netSend(JSON.stringify({ type: "auth", token: accountToken() }));
+  if (data.type === "sessionMismatch" && data.role === "join") {
+    if (!joinedSessionId) return;
+    joinedSessionId = null;
+    createdSessionId = null;
+    cancelSession();
+    gameAlert(t("session_mix"));
+    return;
+  }
+  if (data.type === "sessionMismatch") {
+    gameAlert(t("session_mix"));
+    return;
+  }
   if (data.type === "betState") {
     betState = data;
     renderBet();
@@ -390,18 +402,21 @@ function placeAccount() {
   var lobby = document.getElementById("lobby-bar");
   var aid = document.getElementById("aid-open");
   if (!bar || !lobby || !aid || bar.classList.contains("hide")) return;
+  bar.style.width = "auto";
+  var need = bar.scrollWidth;
   var leftEdge = lobby.getBoundingClientRect().right + 8;
   var rightEdge = aid.getBoundingClientRect().left - 8;
   var gap = rightEdge - leftEdge;
-  var need = bar.scrollWidth;
-  var left = leftEdge;
-  var width = gap;
-  if (need > gap) {
-    left = Math.max(8, rightEdge - need);
-    width = need;
+  if (!lobby.classList.contains("hide") && gap < need) {
+    bar.style.top = lobby.getBoundingClientRect().bottom + 8 + "px";
+    bar.style.left = "12px";
+    bar.style.width = "auto";
+    bar.style.transform = "none";
+    return;
   }
-  bar.style.left = left + "px";
-  bar.style.width = width + "px";
+  bar.style.top = "12px";
+  bar.style.left = Math.max(8, leftEdge) + "px";
+  bar.style.width = Math.max(gap, 0) + "px";
   bar.style.transform = "none";
 }
 

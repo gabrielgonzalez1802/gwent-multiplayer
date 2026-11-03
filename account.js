@@ -518,6 +518,23 @@ function touch(session) {
   session.reports = {};
 }
 
+function sameSide(a, b) {
+  return !!a.userId === !!b.userId;
+}
+
+function dropMixed(session) {
+  if (!session || session.players.length < 2) return false;
+  if (sameSide(session.players[0], session.players[1])) return false;
+  const host = session.players[0];
+  const joiner = session.players[1];
+  session.players = [host];
+  joiner.sessionCode = null;
+  host.send(JSON.stringify({ type: "sessionMismatch", role: "host" }));
+  host.send(JSON.stringify({ type: "sessionUnready" }));
+  if (joiner.readyState === 1) joiner.send(JSON.stringify({ type: "sessionMismatch", role: "join" }));
+  return true;
+}
+
 function bothUsers(session) {
   return !!(
     session &&
@@ -659,6 +676,10 @@ async function allowReady(ws, data, sessions) {
   const session = sessions[ws.sessionCode];
   if (!session) return true;
   touch(session);
+  if (session.players.length === 2 && !sameSide(session.players[0], session.players[1])) {
+    ws.send(JSON.stringify({ type: "readyBlocked", reason: "mix" }));
+    return false;
+  }
   if (bothUsers(session)) {
     const pending = session.players.some(
       (player) => (session.betCards[player.playerId] || []).length > 0,
@@ -711,7 +732,10 @@ async function onSocket(ws, data, sessions) {
     ws.userId = user ? user.id : null;
     ws.userName = user ? user.name : "";
     ws.send(JSON.stringify(user ? { type: "authOk", name: user.name } : { type: "authNo" }));
-    if (ws.sessionCode) sendBet(sessions[ws.sessionCode]);
+    if (ws.sessionCode && sessions[ws.sessionCode]) {
+      const session = sessions[ws.sessionCode];
+      if (!dropMixed(session)) sendBet(session);
+    }
     return "done";
   }
   if (data.type === "betSet" || data.type === "betOk") {
@@ -776,6 +800,7 @@ module.exports = {
   forfeit: forfeit,
   sendBet: sendBet,
   touch: touch,
+  sameSide: sameSide,
   starterCards: starterCards,
   cpuRewardCount: cpuRewardCount,
 };

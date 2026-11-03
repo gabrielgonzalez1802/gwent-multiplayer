@@ -179,6 +179,12 @@ wss.on("connection", (ws) => {
     if (data.type === "joinSession") {
       const sessionCode = data.code;
       if (sessions[sessionCode] && sessions[sessionCode].players.length === 1) {
+        const host = sessions[sessionCode].players[0];
+        if (!account.sameSide(host, ws)) {
+          ws.send(JSON.stringify({ type: "sessionMismatch", role: "join" }));
+          console.log(`# Player ${ws.playerId} blocked from Session ${sessionCode}: cuenta distinta`);
+          return;
+        }
         sessions[sessionCode].players.push(ws);
         ws.sessionCode = sessionCode;
         ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode }));
