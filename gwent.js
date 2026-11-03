@@ -1288,7 +1288,11 @@ class Game {
     ui.toggleMusic_elem.style.left = "26vw";
 
     ui.toggleMusic_elem.classList.remove("music-customization");
-    if (gameMode === "offline") this.cpuPaid = false;
+    if (gameMode === "offline") {
+      this.cpuPaid = false;
+      if (accountProfile && typeof startCpuMatch === "function")
+        startCpuMatch(player_me.deck.faction, player_op.deck.faction);
+    }
     this.currPlayer = player_me;
     this.initPlayers(player_me, player_op);
     await Promise.all(
@@ -1547,16 +1551,11 @@ class Game {
     }
 
     if (accountProfile && (gameMode === "online" || gameMode === "offline")) {
-      let result = "lose";
-      if (player_op.health <= 0 && player_me.health <= 0) result = "draw";
-      else if (player_op.health === 0) result = "win";
-      if (gameMode === "online") {
-        const rounds = this.roundHistory.map((round) => ({ me: round.score_me, op: round.score_op }));
-        netSend(JSON.stringify({ type: "matchResult", rounds: rounds }));
-      }
+      const rounds = this.roundHistory.map((round) => ({ me: round.score_me, op: round.score_op }));
+      if (gameMode === "online") netSend(JSON.stringify({ type: "matchResult", rounds: rounds }));
       else if (!this.cpuPaid) {
         this.cpuPaid = true;
-        if (typeof grantCpuReward === "function") grantCpuReward(result);
+        if (typeof grantCpuReward === "function") grantCpuReward(rounds);
       }
     }
 

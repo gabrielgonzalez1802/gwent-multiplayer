@@ -102,6 +102,20 @@ async function main() {
   if ((rewardA.owned[cardA] || 0) < 1) throw new Error("el ganador perdio su carta");
   const opened = await post("/api/pack/open", {}, a.body.token);
   if (opened.status !== 200 || !opened.body.filename) throw new Error("sobre cerrado");
+  const started = await post("/api/cpu/start", { me: "realms", op: "monsters" }, a.body.token);
+  if (started.status !== 200 || !started.body.id) throw new Error("cpu sin id");
+  const bare = await post("/api/cpu", { result: "win" }, a.body.token);
+  if (bare.status === 200) throw new Error("cpu creyo la palabra");
+  const paid = await post("/api/cpu", {
+    id: started.body.id,
+    rounds: [{ me: 10, op: 0 }, { me: 9, op: 1 }],
+  }, a.body.token);
+  if (paid.status !== 200 || !paid.body.pack) throw new Error("cpu sin sobre");
+  const again = await post("/api/cpu", {
+    id: started.body.id,
+    rounds: [{ me: 10, op: 0 }, { me: 9, op: 1 }],
+  }, a.body.token);
+  if (again.status === 200) throw new Error("cpu cobro dos veces");
   sa.close();
   sb.close();
   const db = await mysql.createConnection({ host: "localhost", user: "root", password: "", database: "gwent" });

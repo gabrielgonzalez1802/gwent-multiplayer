@@ -223,8 +223,27 @@ function playPack(files, done) {
   setTimeout(function () { button.classList.remove("hide"); }, 1100 + files.length * 160);
 }
 
-function grantCpuReward(result) {
-  accountApi("/api/cpu", { result: result }).then(function (data) {
+var cpuMatchId = null;
+var cpuMatchWait = null;
+
+function startCpuMatch(me, op) {
+  cpuMatchId = null;
+  cpuMatchWait = accountApi("/api/cpu/start", { me: me, op: op }).then(function (data) {
+    if (data.ok) cpuMatchId = data.id;
+    return data;
+  });
+}
+
+function grantCpuReward(rounds) {
+  var wait = cpuMatchWait || Promise.resolve({ ok: false, error: "db" });
+  wait.then(function (started) {
+    if (!started.ok || !cpuMatchId) {
+      showReward(accountError(started.error));
+      return null;
+    }
+    return accountApi("/api/cpu", { id: cpuMatchId, rounds: rounds });
+  }).then(function (data) {
+    if (!data) return;
     if (!data.ok) {
       showReward(accountError(data.error));
       return;

@@ -148,6 +148,7 @@ function checkStarters() {
 checkStarters();
 
 let pool = null;
+const cpuMatches = new Map();
 
 function randomFilename() {
   return packPool[Math.floor(Math.random() * packPool.length)];
@@ -444,6 +445,23 @@ async function handleHttp(req, res, urlPath) {
       return;
     }
 
+    if (req.method === "POST" && urlPath === "/api/cpu/start") {
+      const user = await userFromToken(req.headers["x-token"]);
+      if (!user) {
+        send(res, 401, { error: "auth" });
+        return;
+      }
+      const body = await readBody(req);
+      if (FACTIONS.indexOf(body.me) < 0 || FACTIONS.indexOf(body.op) < 0) {
+        send(res, 400, { error: "bad" });
+        return;
+      }
+      const id = crypto.randomBytes(8).toString("hex");
+      cpuMatches.set(user.id, { id: id, me: body.me, op: body.op });
+      send(res, 200, { id: id });
+      return;
+    }
+
     if (req.method === "POST" && urlPath === "/api/cpu") {
       const user = await userFromToken(req.headers["x-token"]);
       if (!user) {
@@ -451,12 +469,17 @@ async function handleHttp(req, res, urlPath) {
         return;
       }
       const body = await readBody(req);
-      const result = body.result;
-      if (result !== "win" && result !== "lose" && result !== "draw") {
+      const match = cpuMatches.get(user.id);
+      const rounds = match && match.id === body.id ? cleanRounds(body.rounds) : null;
+      const verdict = rounds && verdictFromRounds(rounds, match.me, match.op);
+      if (!verdict) {
         send(res, 400, { error: "bad" });
         return;
       }
-      // ponytail: el cliente dice si ganó contra la CPU. El paso siguiente es no fiarse de ese resultado.
+      cpuMatches.delete(user.id);
+      // ponytail: la CPU no se juega aqui. El id cobra una sola vez y el resultado sale de las rondas,
+      // pero el unico cliente escribe el marcador. Jugar la partida en el servidor cerraria el hueco.
+      const result = verdict === "draw" ? "draw" : verdict === "a" ? "win" : "lose";
       const granted = await grantCpuCards(user.id, result);
       const view = await publicUser(user.id);
       view.pack = granted.pack;
