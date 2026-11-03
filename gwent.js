@@ -1550,7 +1550,10 @@ class Game {
       let result = "lose";
       if (player_op.health <= 0 && player_me.health <= 0) result = "draw";
       else if (player_op.health === 0) result = "win";
-      if (gameMode === "online") netSend(JSON.stringify({ type: "matchResult", result: result }));
+      if (gameMode === "online") {
+        const rounds = this.roundHistory.map((round) => ({ me: round.score_me, op: round.score_op }));
+        netSend(JSON.stringify({ type: "matchResult", rounds: rounds }));
+      }
       else if (!this.cpuPaid) {
         this.cpuPaid = true;
         if (typeof grantCpuReward === "function") grantCpuReward(result);

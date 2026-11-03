@@ -91,8 +91,8 @@ async function main() {
   sa.send(JSON.stringify({ type: "gameStart" }));
   sa.send(JSON.stringify({ type: "play" }));
   sb.send(JSON.stringify({ type: "pass" }));
-  sa.send(JSON.stringify({ type: "matchResult", result: "win" }));
-  sb.send(JSON.stringify({ type: "matchResult", result: "lose" }));
+  sa.send(JSON.stringify({ type: "matchResult", rounds: [{ me: 10, op: 0 }, { me: 8, op: 1 }] }));
+  sb.send(JSON.stringify({ type: "matchResult", rounds: [{ me: 0, op: 10 }, { me: 1, op: 8 }] }));
   const rewardA = await waitFor(sa, (m) => m.type === "rewards");
   const rewardB = await waitFor(sb, (m) => m.type === "rewards");
   if (!rewardA.pack || rewardB.pack) throw new Error("sobre mal repartido");

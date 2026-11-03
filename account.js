@@ -696,8 +696,63 @@ async function allowReady(ws, data, sessions) {
       return false;
     }
   }
+  if (!session.factions) session.factions = {};
+  if (data.deck && typeof data.deck.faction === "string") session.factions[ws.playerId] = data.deck.faction;
   return true;
 }
+
+function cleanRounds(raw) {
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > 3) return null;
+  const out = [];
+  for (let i = 0; i < raw.length; i++) {
+    const round = raw[i];
+    if (!round || typeof round !== "object") return null;
+    const me = Math.floor(Number(round.me));
+    const op = Math.floor(Number(round.op));
+    if (!Number.isFinite(me) || !Number.isFinite(op) || me < 0 || op < 0 || me > 9999 || op > 9999) return null;
+    out.push({ me: me, op: op });
+  }
+  return out;
+}
+
+function agreedRounds(left, right) {
+  if (!left || !right || left.length !== right.length) return null;
+  const out = [];
+  for (let i = 0; i < left.length; i++) {
+    if (left[i].me !== right[i].op || left[i].op !== right[i].me) return null;
+    out.push(left[i]);
+  }
+  return out;
+}
+
+function verdictFromRounds(rounds, factionA, factionB) {
+  let healthA = 2;
+  let healthB = 2;
+  for (let i = 0; i < rounds.length; i++) {
+    if (healthA <= 0 || healthB <= 0) return null;
+    let dif = rounds[i].me - rounds[i].op;
+    if (dif === 0) {
+      const nilfA = factionA === "nilfgaard";
+      const nilfB = factionB === "nilfgaard";
+      if (nilfA !== nilfB) dif = nilfA ? 1 : -1;
+    }
+    if (dif <= 0) healthA--;
+    if (dif >= 0) healthB--;
+  }
+  if (healthA > 0 && healthB > 0) return null;
+  if (healthA <= 0 && healthB <= 0) return "draw";
+  return healthB <= 0 ? "a" : "b";
+}
+
+(function () {
+  const won = verdictFromRounds([{ me: 10, op: 1 }, { me: 4, op: 0 }], "realms", "monsters");
+  const tied = verdictFromRounds([{ me: 5, op: 5 }, { me: 5, op: 5 }], "nilfgaard", "realms");
+  const drawn = verdictFromRounds([{ me: 3, op: 3 }, { me: 2, op: 2 }], "realms", "realms");
+  const short = verdictFromRounds([{ me: 9, op: 0 }], "realms", "realms");
+  const same = agreedRounds([{ me: 10, op: 1 }], [{ me: 1, op: 10 }]);
+  const clash = agreedRounds([{ me: 10, op: 1 }], [{ me: 0, op: 10 }]);
+  if (won !== "a" || tied !== "a" || drawn !== "draw" || short !== null || !same || clash) throw new Error("marcador");
+})();
 
 function notePlay(ws, sessions) {
   const session = sessions[ws.sessionCode];
@@ -773,17 +828,18 @@ async function onSocket(ws, data, sessions) {
     if (!session) return "done";
     touch(session);
     if (!session.matchLive || session.settled) return "done";
-    const result = data.result;
-    if (result !== "win" && result !== "lose" && result !== "draw") return "done";
-    session.reports[ws.playerId] = result;
+    const rounds = cleanRounds(data.rounds);
+    if (!rounds) return "done";
+    session.reports[ws.playerId] = rounds;
     if (session.players.some((player) => !session.reports[player.playerId])) return "done";
     const a = session.players[0];
     const b = session.players[1];
-    const ra = session.reports[a.playerId];
-    const rb = session.reports[b.playerId];
-    if (ra === "draw" && rb === "draw") await settle(session, "draw", null);
-    else if (ra === "win" && rb === "lose") await settle(session, "win", a.playerId);
-    else if (ra === "lose" && rb === "win") await settle(session, "win", b.playerId);
+    const agreed = agreedRounds(session.reports[a.playerId], session.reports[b.playerId]);
+    const factions = session.factions || {};
+    const verdict = agreed && verdictFromRounds(agreed, factions[a.playerId], factions[b.playerId]);
+    if (verdict === "draw") await settle(session, "draw", null);
+    else if (verdict === "a") await settle(session, "win", a.playerId);
+    else if (verdict === "b") await settle(session, "win", b.playerId);
     else await settle(session, "dispute", null);
     return "done";
   }
