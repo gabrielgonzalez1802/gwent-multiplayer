@@ -17,9 +17,19 @@ npm install
 npm start
 ```
 
-Then open http://127.0.0.1:8080 . `npm start` serves the page and the websocket on port 8080.
+Then open http://127.0.0.1:8080 . `npm start` serves the page and the websocket on port 8080. Accounts, packs, and bets need MySQL. If it is down, the page still opens and `/api` answers 503.
 
 **Offline** plays against the CPU. The server is not required for that match. **Online** plays against another player. The Online button checks that the server answers. If it does not, the page says to run `npm start`. Creating a game shows a session code. The other player joins with that code.
+
+## Accounts, packs, and the tutorial
+
+An account is optional. Register with a name, a password, and a faction. The browser keeps the login token. Without an account you can still play, and online a guest only meets another guest. An account only meets another account. The CPU is available either way.
+
+MySQL runs on localhost, as user `root`, with an empty password, and the database name is `gwent`. The server creates that database and the tables. Override the connection with `GWENT_DB_HOST`, `GWENT_DB_USER`, `GWENT_DB_PASSWORD`, and `GWENT_DB_NAME`.
+
+A win against the CPU grants one pack of 1 to 3 cards. A loss or a draw sometimes grants one pack with a single weak card, and sometimes nothing. The end of the match only says whether a pack was earned. Opening it plays the envelope and adds the cards to the collection, stacked by copy, not to the deck in play. Online, both accounts can wager cards from the collection. The server decides that match from the round scores both players report, and Nilfgaard still wins a tie.
+
+Tutorial, on the deck screen, walks through the layout and ends in a practice match on Beginner.
 
 ## CPU
 
