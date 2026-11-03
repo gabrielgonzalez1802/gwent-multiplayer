@@ -1,6 +1,7 @@
 const http = require("http");
 const WebSocket = require("ws");
 const mysql = require("mysql2/promise");
+const { mysqlOptions } = require("./db-config");
 
 const port = Number(process.argv[2] || 5532);
 const base = "http://127.0.0.1:" + port;
@@ -118,7 +119,7 @@ async function main() {
   if (again.status === 200) throw new Error("cpu cobro dos veces");
   sa.close();
   sb.close();
-  const db = await mysql.createConnection({ host: "localhost", user: "root", password: "", database: "gwent" });
+  const db = await mysql.createConnection(mysqlOptions(true));
   await db.query("DELETE packs FROM packs JOIN users ON users.id=packs.user_id WHERE users.name IN (?,?)", ["ga" + stamp, "gb" + stamp]);
   await db.query("DELETE owned FROM owned JOIN users ON users.id=owned.user_id WHERE users.name IN (?,?)", ["ga" + stamp, "gb" + stamp]);
   await db.query("DELETE login_tokens FROM login_tokens JOIN users ON users.id=login_tokens.user_id WHERE users.name IN (?,?)", ["ga" + stamp, "gb" + stamp]);

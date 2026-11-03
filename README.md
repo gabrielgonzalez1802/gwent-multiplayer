@@ -25,7 +25,7 @@ Then open http://127.0.0.1:8080 . `npm start` serves the page and the websocket 
 
 An account is optional. Register with a name, a password, and a faction. The browser keeps the login token. Without an account you can still play, and online a guest only meets another guest. An account only meets another account. The CPU is available either way.
 
-MySQL runs on localhost, as user `root`, with an empty password, and the database name is `gwent`. The server creates that database and the tables. Override the connection with `GWENT_DB_HOST`, `GWENT_DB_USER`, `GWENT_DB_PASSWORD`, and `GWENT_DB_NAME`.
+Copy `db.example.json` to `db.json` and set the host, port, user, password, and database. `db.json` stays on this machine. Without that file the server uses localhost, user `root`, an empty password, database `gwent`, and port 3306. The same values can be set with `GWENT_DB_HOST`, `GWENT_DB_PORT`, `GWENT_DB_USER`, `GWENT_DB_PASSWORD`, and `GWENT_DB_NAME`. The server creates the database when the account is allowed to, then creates the tables. Set `"ssl": true` when the external server requires it.
 
 A win against the CPU grants one pack of 1 to 3 cards. A loss or a draw sometimes grants one pack with a single weak card, and sometimes nothing. The end of the match only says whether a pack was earned. Opening it plays the envelope and adds the cards to the collection, stacked by copy, not to the deck in play. Online, both accounts can wager cards from the collection. The server decides that match from the round scores both players report, and Nilfgaard still wins a tie.
 

@@ -4,12 +4,7 @@ const path = require("path");
 const vm = require("vm");
 const mysql = require("mysql2/promise");
 
-const DB = {
-  host: process.env.GWENT_DB_HOST || "localhost",
-  user: process.env.GWENT_DB_USER || "root",
-  password: process.env.GWENT_DB_PASSWORD || "",
-  database: process.env.GWENT_DB_NAME || "gwent",
-};
+const { DB, mysqlOptions } = require("./db-config");
 
 const FACTIONS = ["realms", "nilfgaard", "monsters", "scoiatael", "skellige"];
 
@@ -202,22 +197,19 @@ function validPass(password) {
 }
 
 async function init() {
-  const boot = await mysql.createConnection({
-    host: DB.host,
-    user: DB.user,
-    password: DB.password,
-  });
-  await boot.query(
-    "CREATE DATABASE IF NOT EXISTS `" + DB.database + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
-  );
-  await boot.end();
-  pool = mysql.createPool({
-    host: DB.host,
-    user: DB.user,
-    password: DB.password,
-    database: DB.database,
-    connectionLimit: 4,
-  });
+  const boot = await mysql.createConnection(mysqlOptions(false));
+  try {
+    try {
+      await boot.query(
+        "CREATE DATABASE IF NOT EXISTS `" + DB.database + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      );
+    } catch (err) {
+      if (!err || (err.errno !== 1044 && err.errno !== 1142)) throw err;
+    }
+  } finally {
+    await boot.end();
+  }
+  pool = mysql.createPool(Object.assign(mysqlOptions(true), { connectionLimit: 4 }));
   await pool.query(
     "CREATE TABLE IF NOT EXISTS users (" +
       "id INT AUTO_INCREMENT PRIMARY KEY," +
