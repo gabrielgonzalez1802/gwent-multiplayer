@@ -2061,6 +2061,7 @@ class UI {
 
   // Hides the card preview then disables and removes highlighting from card destinations
   hidePreview() {
+    clearKeyPick();
     document.getElementById("click-background").classList.add("noclick");
     player_me.hand.cards.forEach((c) => c.elem.classList.remove("noclick"));
 
@@ -4559,6 +4560,115 @@ function startLoadingEffect() {
 function stopLoadingEffect() {
   passButton.classList.remove("loading");
 }
+
+var keyHand = 0;
+var keyRow = 0;
+
+function keyTyping(event) {
+  var el = event.target;
+  if (!el || !el.tagName) return false;
+  var tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+}
+
+function keyBlocked() {
+  var ids = ["rules-modal", "aid-modal", "game-notice", "pack-show", "popup"];
+  for (var i = 0; i < ids.length; i++) {
+    var el = document.getElementById(ids[i]);
+    if (el && !el.classList.contains("hide")) return true;
+  }
+  return false;
+}
+
+function clearKeyPick() {
+  var nodes = document.querySelectorAll(".key-pick");
+  for (var i = 0; i < nodes.length; i++) nodes[i].classList.remove("key-pick");
+}
+
+function myKeyTurn() {
+  if (typeof game === "undefined" || !game || typeof player_me === "undefined" || !player_me) return false;
+  if (game.currPlayer !== player_me || player_me.passed) return false;
+  var main = document.getElementsByTagName("main")[0];
+  return !!(main && !main.classList.contains("noclick") && player_me.hand);
+}
+
+function playTargets() {
+  if (!ui || !ui.previewCard) return [];
+  var nodes = ui.previewCard.name === "Decoy"
+    ? document.querySelectorAll(".row-selectable .card")
+    : document.querySelectorAll(".row-selectable");
+  return Array.prototype.filter.call(nodes, function (el) {
+    return !el.classList.contains("noclick");
+  });
+}
+
+function markPlayTarget() {
+  var targets = playTargets();
+  for (var i = 0; i < targets.length; i++) targets[i].classList.remove("key-pick");
+  if (!targets.length) return;
+  if (keyRow < 0 || keyRow >= targets.length) keyRow = 0;
+  targets[keyRow].classList.add("key-pick");
+}
+
+function pickHand(delta) {
+  var cards = player_me.hand.cards;
+  if (!cards.length || !ui) return;
+  var current = cards.indexOf(ui.previewCard);
+  if (current >= 0) keyHand = current;
+  keyHand = (keyHand + delta + cards.length) % cards.length;
+  clearKeyPick();
+  keyRow = 0;
+  cards[keyHand].elem.classList.add("key-pick");
+  ui.selectCard(cards[keyHand]);
+  markPlayTarget();
+}
+
+function movePlayTarget(delta) {
+  var targets = playTargets();
+  if (!targets.length) return;
+  keyRow = (keyRow + delta + targets.length) % targets.length;
+  for (var i = 0; i < targets.length; i++) targets[i].classList.remove("key-pick");
+  targets[keyRow].classList.add("key-pick");
+}
+
+document.addEventListener("keydown", function (event) {
+  if (keyTyping(event) || keyBlocked()) return;
+  var carousel = document.getElementById("carousel");
+  if (carousel && !carousel.classList.contains("hide") && typeof Carousel !== "undefined" && Carousel.curr) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      Carousel.curr.shift(event, -1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      Carousel.curr.shift(event, 1);
+    } else if (event.key === "Enter" && !event.repeat) {
+      event.preventDefault();
+      Carousel.curr.select(event);
+    }
+    return;
+  }
+  if (!myKeyTurn()) return;
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    pickHand(-1);
+  } else if (event.key === "ArrowRight") {
+    event.preventDefault();
+    pickHand(1);
+  } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    event.preventDefault();
+    movePlayTarget(event.key === "ArrowUp" ? -1 : 1);
+  } else if (event.key === "Enter" && !event.repeat) {
+    var targets = playTargets();
+    if (!targets.length) {
+      event.preventDefault();
+      pickHand(0);
+      return;
+    }
+    event.preventDefault();
+    if (keyRow < 0 || keyRow >= targets.length) keyRow = 0;
+    targets[keyRow].click();
+  }
+});
 
 var tutorialOn = false;
 var tutorialLive = false;

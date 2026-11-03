@@ -1707,6 +1707,18 @@ body.lang-es #notif-zerrikania::after {
 	box-sizing: border-box;
 }
 
+#hand-row > .card.key-pick {
+	border: .12vw outset #f2e6c8;
+	border-radius: .3vw;
+	margin-bottom: 1vw;
+	z-index: 2;
+}
+
+.row-selectable.key-pick,
+.row-selectable > .card.key-pick {
+	box-shadow: 0 0 .45vw #f2e6c8;
+}
+
 .card-selectable>.card:hover {
 	border: .12vw outset goldenrod;
 	border-radius: .3vw;
