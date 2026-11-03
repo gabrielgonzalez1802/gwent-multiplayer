@@ -219,6 +219,11 @@ wss.on("connection", (ws) => {
             if (session.players.length < 2) session.players.push(ws);
           }
           ws.sessionCode = d.code;
+          session.players.forEach((player) => {
+            if (player !== ws && player.readyState === 1) {
+              player.send(JSON.stringify({ type: "opponentBack" }));
+            }
+          });
           console.log(
             `# Player ${ws.playerId} reconnected to Session ${d.code}`,
           );
@@ -292,6 +297,7 @@ wss.on("connection", (ws) => {
         const host = sessions[sessionCode].players[0];
         if (!account.sameSide(host, ws)) {
           ws.send(JSON.stringify({ type: "sessionMismatch", role: "join" }));
+          if (host.readyState === 1) host.send(JSON.stringify({ type: "sessionMismatch", role: "host" }));
           console.log(`# Player ${ws.playerId} blocked from Session ${sessionCode}: cuenta distinta`);
           return;
         }
@@ -433,6 +439,7 @@ wss.on("connection", (ws) => {
           JSON.stringify({
             type: "opponentDisconnected",
             playerId: ws.playerId,
+            wait: RECONNECT_WAIT_MS,
           }),
         );
         otherPlayer.send(JSON.stringify({ type: "sessionUnready" }));

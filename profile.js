@@ -50,6 +50,36 @@ function cardList(files) {
 }
 
 var rewardTimer = null;
+var dropTimer = null;
+
+function showHold(text) {
+  var note = document.getElementById("reward-note");
+  if (rewardTimer) clearTimeout(rewardTimer);
+  rewardTimer = null;
+  note.textContent = text;
+  note.classList.remove("hide");
+}
+
+function clearHold() {
+  if (dropTimer) clearInterval(dropTimer);
+  dropTimer = null;
+  showReward("");
+}
+
+function showDropWait(ms) {
+  var left = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+  if (dropTimer) clearInterval(dropTimer);
+  showHold(tf("op_wait", { n: left }));
+  dropTimer = setInterval(function () {
+    left -= 1;
+    if (left < 0) left = 0;
+    showHold(tf("op_wait", { n: left }));
+    if (left === 0) {
+      clearInterval(dropTimer);
+      dropTimer = null;
+    }
+  }, 1000);
+}
 
 function showReward(text) {
   var note = document.getElementById("reward-note");
@@ -256,8 +286,8 @@ function grantCpuReward(rounds) {
 
 function undoReady(reason) {
   amReady = false;
-  readyButtonElem.classList.remove("ready");
   readyButtonElem.disabled = false;
+  readyButtonElem.classList.remove("ready");
   customizationElem.classList.remove("noclick");
   showReward(reason === "deck" ? t("bet_deck") : reason === "mix" ? t("session_mix") : t("bet_wait"));
 }
@@ -297,15 +327,23 @@ onSocketMessage = async function (event) {
   if (data.type === "welcome" && accountToken())
     netSend(JSON.stringify({ type: "auth", token: accountToken() }));
   if (data.type === "sessionMismatch" && data.role === "join") {
+    showHold(t("session_mix"));
     if (!joinedSessionId) return;
     joinedSessionId = null;
     createdSessionId = null;
     cancelSession();
-    gameAlert(t("session_mix"));
     return;
   }
   if (data.type === "sessionMismatch") {
-    gameAlert(t("session_mix"));
+    showHold(t("session_mix"));
+    return;
+  }
+  if (data.type === "opponentDisconnected") {
+    showDropWait(data.wait);
+    return;
+  }
+  if (data.type === "opponentBack") {
+    clearHold();
     return;
   }
   if (data.type === "betState") {
@@ -326,6 +364,7 @@ onSocketMessage = async function (event) {
     return;
   }
   if (data.type === "sessionDeleted" || data.type === "sessionUnready") {
+    if (data.type === "sessionDeleted") clearHold();
     betState = null;
     document.getElementById("bet-panel").classList.add("hide");
   }

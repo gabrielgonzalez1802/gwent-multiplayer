@@ -28,6 +28,7 @@ async function onSocketMessage(event) {
 
     // Oponent has joined and the session is ready
     case "sessionReady":
+      if (typeof clearHold === "function") clearHold();
       readyButtonElem.classList.remove("disabled");
       isOponentReadyElem.classList.remove("hidden");
       // sends the oponent which faction you're playing with
