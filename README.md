@@ -94,9 +94,23 @@ The Gwent tracks still stream from YouTube. The music icon is in the center of t
 
 Local play does not need a config change. The server listens on `0.0.0.0` and on `PORT`, or 8080 if `PORT` is not set, and it serves this folder. Opening the page from that server makes Online use the same address.
 
-To put it on a remote host, [Glitch](https://glitch.com), [Fly.io](https://fly.io/docs/js/), and [Render](https://render.com/) still work. Set `PORT` if the host requires it. `config.js` holds `CLIENT_CONFIG`, a fallback `wss://` address used only when the page cannot reach a local server. The old edit in `session.js` that switched `ws://` to `wss://` is no longer needed.
+To put it on a remote host, [Glitch](https://glitch.com), [Fly.io](https://fly.io/docs/js/), and [Render](https://render.com/) still work. Set `PORT` if the host requires it. Copy `config.example.js` to `config.js`. That file holds `CLIENT_CONFIG`, a fallback `wss://` address used only when the page cannot reach a local server, and it stays on this machine. Leave it empty to use the address of the page. The old edit in `session.js` that switched `ws://` to `wss://` is no longer needed.
 
 A successful online connection shows the session code after Create Game. If nothing is listening, the page says the server is not running.
+
+## Tunnel from another network
+
+One machine runs `npm start` on port 8080. The other person does not start a server. They open the public address in a browser. The two players do not need to be on the same network.
+
+[Tunnex](https://tunnex.org/docs/getting-started/) publishes that port. Install it with `pip install tunnex`. The first time, in a second terminal, run `tunnex login` and approve the code in the browser. There is no username or password in this repository. Then, with `npm start` still running:
+
+```
+tunnex http 8080 -s your-name
+```
+
+The public page is `https://your-name.tunnex.org`. Copy `config.example.js` to `config.js` and set `CLIENT_CONFIG` to that hostname. `config.js` is not committed. If the shell cannot find `tunnex`, run the `tunnex` program from the Python user `Scripts` directory. If Tunnex says the name is in use, `tunnex domains list` shows the names reserved by the signed-in account, `tunnex domains reserve another-name` keeps a free one, and the `http` command uses that name. Update `config.js` to match.
+
+Ctrl+C stops the tunnel and leaves `npm start` running. Shutting down the host stops both. The reserved name stays on the account, so the next time the same command is enough. Online, an account only plays another account, and a guest only plays another guest.
 
 ## Known issues
 
