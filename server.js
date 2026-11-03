@@ -378,6 +378,7 @@ wss.on("connection", (ws) => {
 
     if (data.type === "play" || data.type === "useLeader") account.notePlay(ws, sessions);
     if (data.type === "ready" && !(await account.allowReady(ws, data, sessions))) return;
+    if (data.type === "ready") ws.send(JSON.stringify({ type: "readyAck" }));
 
     // Relay messages to the other player in the same session
     if (ws.sessionCode) {

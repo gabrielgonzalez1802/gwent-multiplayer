@@ -155,6 +155,10 @@ async function onSocketMessage(event) {
       if (typeof Carousel !== "undefined" && Carousel.curr) Carousel.curr.exit();
       break;
 
+    case "readyAck":
+      readyButtonElem.disabled = false;
+      break;
+
     // Game - Oponent used the leader card
     case "useLeader":
       player_op.activateLeader();
@@ -3892,7 +3896,9 @@ class DeckMaker {
     };
 
     player_me = new Player(0, "you", me_deck);
+    readyButtonElem.disabled = true;
     netSend(JSON.stringify({ type: "ready", deck: me_deck }));
+    setTimeout(function () { readyButtonElem.disabled = false; }, 8000);
     amReady = true;
     if (oponentReady) {
       this.elem.classList.add("hide");

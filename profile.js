@@ -257,6 +257,7 @@ function grantCpuReward(rounds) {
 function undoReady(reason) {
   amReady = false;
   readyButtonElem.classList.remove("ready");
+  readyButtonElem.disabled = false;
   customizationElem.classList.remove("noclick");
   showReward(reason === "deck" ? t("bet_deck") : reason === "mix" ? t("session_mix") : t("bet_wait"));
 }
