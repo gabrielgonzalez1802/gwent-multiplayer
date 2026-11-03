@@ -14,7 +14,9 @@ const passButton = document.getElementById("pass-button");
 const customizationElem = document.getElementById("deck-customization");
 const gameStartControlsElem = document.getElementById("session-start-control");
 
-socket.onmessage = async (event) => {
+if (socket) socket.onmessage = onSocketMessage;
+
+async function onSocketMessage(event) {
   const data = JSON.parse(event.data);
 
   switch (data.type) {
@@ -28,7 +30,7 @@ socket.onmessage = async (event) => {
       readyButtonElem.classList.remove("disabled");
       isOponentReadyElem.classList.remove("hidden");
       // sends the oponent which faction you're playing with
-      socket.send(
+      netSend(
         JSON.stringify({ type: "opChangeFaction", faction: dm.faction }),
       );
       break;
@@ -173,7 +175,7 @@ socket.onmessage = async (event) => {
         return true;
       });
   }
-};
+}
 
 function fillCardElements(cards, player) {
   for (let i = 0; i < cards.length; i++) {
@@ -198,8 +200,13 @@ class ControllerOponent {
 class Player {
   constructor(id, name, deck) {
     this.id = id;
-    this.tag = "me";
-    this.controller = id === 0 ? new Controller() : new ControllerOponent(this);
+    this.tag = id === 0 ? "me" : "op";
+    this.controller =
+      id === 0
+        ? new Controller()
+        : gameMode === "offline"
+          ? new ControllerAI(this)
+          : new ControllerOponent(this);
 
     this.hand =
       id === 0
@@ -219,10 +226,12 @@ class Player {
     this.reset();
 
     this.name = name;
-    document.getElementById("name-" + this.tag).innerHTML = name;
+    document.getElementById("name-" + this.tag).innerHTML = displayName(name);
 
-    document.getElementById("deck-name-" + this.tag).innerHTML =
-      factions[deck.faction].name;
+    document.getElementById("deck-name-" + this.tag).innerHTML = factionField(
+      deck.faction,
+      "name",
+    );
     document
       .getElementById("stats-" + this.tag)
       .getElementsByClassName("profile-img")[0].children[0].children[0];
@@ -288,6 +297,10 @@ class Player {
 
     if (this === player_me) {
       document.getElementById("pass-button").classList.remove("noclick");
+    }
+
+    if (this.controller instanceof ControllerAI) {
+      await this.controller.startTurn(this);
     }
   }
 
@@ -395,7 +408,7 @@ class Player {
     if (this.id === 0 && this.leader.activated.length > 0) {
       this.elem_leader.addEventListener("click", async () => {
         await ui.viewCard(this.leader, async () => {
-          socket.send(JSON.stringify({ type: "useLeader", player: this.id }));
+          netSend(JSON.stringify({ type: "useLeader", player: this.id }));
           await this.activateLeader();
         });
       });
@@ -738,6 +751,11 @@ class Row extends CardContainer {
   constructor(elem) {
     super(elem.getElementsByClassName("row-cards")[0]);
     this.elem_parent = elem;
+    this.type = /siege/.test(elem.id)
+      ? "siege"
+      : /ranged/.test(elem.id)
+        ? "ranged"
+        : "close";
     this.elem_special = elem.getElementsByClassName("row-special")[0];
     this.special = null;
     this.total = 0;
@@ -811,7 +829,18 @@ class Row extends CardContainer {
     x.classList.remove("noclick");
   }
 
-  // Updates a card's effect on the row
+  // Score copy used by the offline opponent. It does not touch the board.
+  getVirtualCopy() {
+    const copy = Object.create(Row.prototype);
+    copy.effects = Object.assign({}, this.effects, {
+      bond: Object.assign({}, this.effects.bond),
+    });
+    copy.cards = this.cards.slice();
+    copy.special = this.special;
+    copy.type = this.type;
+    return copy;
+  }
+
   updateState(card, activate) {
     for (let x of card.abilities) {
       switch (x) {
@@ -894,6 +923,12 @@ class Row extends CardContainer {
     );
     if (this.effects.horn - (card.abilities.includes("horn") ? 1 : 0) > 0)
       total *= 2;
+    return total;
+  }
+
+  calcScore() {
+    let total = 0;
+    for (let card of this.cards) total += this.calcCardScore(card);
     return total;
   }
 
@@ -1093,6 +1128,13 @@ class Board {
   // Sends and translates a card from the source to the Deck of the card's combat row
   async toRow(card, source) {
     let row = card.row === "agile" ? "close" : card.row ? card.row : "close";
+    if (
+      card.row === "agile" &&
+      card.holder &&
+      card.holder.controller instanceof ControllerAI
+    ) {
+      row = card.holder.controller.determineAgileRow(card).type;
+    }
     await this.moveTo(card, row, source);
   }
 
@@ -1230,6 +1272,7 @@ class Game {
   // Initializes player abilities, hands and waits for cointoss
   async startGame() {
     gameStartControlsElem.classList.add("hide");
+    document.getElementById("lobby-bar").classList.add("hide");
     isOponentReadyElem.classList.add("hidden");
     ui.toggleMusic_elem.style.left = "26vw";
 
@@ -1245,6 +1288,18 @@ class Game {
 
     await this.runEffects(this.gameStart);
     tocar("game_opening", false);
+    if (gameMode === "offline") {
+      const meST = player_me.deck.faction === "scoiatael";
+      const opST = player_op.deck.faction === "scoiatael";
+      if (opST && !meST) {
+        game.firstPlayer = player_me;
+        game.currPlayer = player_me;
+      } else if (!meST || opST) {
+        await this.coinToss();
+      }
+      await this.initialRedraw();
+      return;
+    }
     if (
       player_op.deck.faction === "scoiatael" &&
       player_me.deck.faction !== "scoiatael"
@@ -1264,17 +1319,17 @@ class Game {
         socket.addEventListener("message", handleMessage);
       });
 
-      socket.send(JSON.stringify({ type: "gameStart" }));
+      netSend(JSON.stringify({ type: "gameStart" }));
       await this.initialRedraw();
     } else if (
       player_me.deck.faction === "scoiatael" &&
       player_op.deck.faction !== "scoiatael"
     ) {
-      socket.send(JSON.stringify({ type: "gameStart" }));
+      netSend(JSON.stringify({ type: "gameStart" }));
 
       await this.initialRedraw();
     } else {
-      socket.send(JSON.stringify({ type: "gameStart" }));
+      netSend(JSON.stringify({ type: "gameStart" }));
       await this.coinToss();
 
       await this.initialRedraw();
@@ -1283,6 +1338,18 @@ class Game {
 
   // Determines who starts first
   async coinToss() {
+    if (gameMode === "offline") {
+      const player = Math.random() < 0.5 ? player_me : player_op;
+      game.firstPlayer = player;
+      game.currPlayer = player;
+      if (player === player_me) {
+        passButton.classList.remove("hidden");
+        document.addEventListener("keydown", handleKeyDown);
+        document.addEventListener("keyup", handleKeyUp);
+      }
+      await ui.notification(player.tag + "-coin", 1200);
+      return;
+    }
     return new Promise((resolve) => {
       const handleMessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -1318,16 +1385,23 @@ class Game {
       (c) => true,
       true,
       true,
-      "Choose up to 2 cards to redraw.",
+      "redraw_hint",
     );
     ui.enablePlayer(false);
 
-    socket.send(
+    if (gameMode === "offline") {
+      if (player_op.controller instanceof ControllerAI)
+        player_op.controller.redraw();
+      await this.startRound();
+      return;
+    }
+
+    netSend(
       JSON.stringify({
         type: "finished_redraw",
       }),
     );
-    socket.send(
+    netSend(
       JSON.stringify({
         type: "deck_hand_ready",
         hand: removeCircularReferences(player_me.hand.cards),
@@ -1429,8 +1503,8 @@ class Game {
     readyButtonElem.classList.remove("ready");
     let endScreen = document.getElementById("end-screen");
     let rows = endScreen.getElementsByTagName("tr");
-    rows[1].children[0].innerHTML = player_me.name;
-    rows[2].children[0].innerHTML = player_op.name;
+    rows[1].children[0].innerHTML = displayName(player_me.name);
+    rows[2].children[0].innerHTML = displayName(player_op.name);
 
     for (let i = 1; i < 4; ++i) {
       let round = this.roundHistory[i - 1];
@@ -1466,7 +1540,8 @@ class Game {
 
   // Returns the client to the deck customization screen
   returnToCustomization() {
-    socket.send(JSON.stringify({ type: "unReady" }));
+    gameMode = "online";
+    netSend(JSON.stringify({ type: "unReady" }));
     amReady = false;
     oponentReady = false;
     readyButtonElem.classList.remove("ready");
@@ -1480,6 +1555,7 @@ class Game {
     this.endScreen.classList.add("hide");
     customizationElem.classList.remove("hide");
     gameStartControlsElem.classList.remove("hide");
+    document.getElementById("lobby-bar").classList.remove("hide");
   }
 
   // Restarts the last game with the same decks
@@ -1529,21 +1605,23 @@ class Card {
       }
     }
 
-    if (this.row === "leader") this.desc_name = "Leader Ability";
+    this.refreshTexts();
+    this.elem = this.createCardElem(this);
+  }
+
+  refreshTexts() {
+    if (this.row === "leader") this.desc_name = t("leader_ability");
     else if (this.abilities.length > 0)
-      this.desc_name =
-        ability_dict[this.abilities[this.abilities.length - 1]].name;
-    else if (this.row === "agile") this.desc_name = "agile";
-    else if (this.hero) this.desc_name = "hero";
+      this.desc_name = abField(this.abilities[this.abilities.length - 1], "name");
+    else if (this.row === "agile") this.desc_name = abField("agile", "name");
+    else if (this.hero) this.desc_name = abField("hero", "name");
     else this.desc_name = "";
 
-    this.desc = this.row === "agile" ? ability_dict["agile"].description : "";
+    this.desc = this.row === "agile" ? abField("agile", "description") : "";
     for (let i = this.abilities.length - 1; i >= 0; --i) {
-      this.desc += ability_dict[this.abilities[i]].description;
+      this.desc += abField(this.abilities[i], "description");
     }
-    if (this.hero) this.desc += ability_dict["hero"].description;
-
-    this.elem = this.createCardElem(this);
+    if (this.hero) this.desc += abField("hero", "description");
   }
 
   // Returns the identifier for this type of card
@@ -1741,7 +1819,7 @@ class UI {
     this.previewCard = null;
     this.lastRow = null;
     passButton.addEventListener("click", () => {
-      socket.send(JSON.stringify({ type: "pass", player: playerId }));
+      netSend(JSON.stringify({ type: "pass", player: playerId }));
       player_me.passRound();
     });
     document
@@ -1828,7 +1906,7 @@ class UI {
       const playedCard = removeCircularReferences(this.previewCard);
       const targetCard = removeCircularReferences(card);
 
-      socket.send(
+      netSend(
         JSON.stringify({
           type: "play",
           player: playerId,
@@ -1866,7 +1944,7 @@ class UI {
 
     if (this.previewCard.name === "Decoy") return;
 
-    socket.send(
+    netSend(
       JSON.stringify({
         type: "play",
         player: playerId,
@@ -1908,8 +1986,9 @@ class UI {
   showPreviewVisuals(card) {
     this.previewCard = card;
     this.preview.classList.remove("hide");
-    this.preview.getElementsByClassName("card-lg")[0].style.backgroundImage =
-      largeURL(card.faction + "_" + card.filename);
+    var previewFace = this.preview.getElementsByClassName("card-lg")[0];
+    previewFace.style.backgroundImage = largeURL(card.faction + "_" + card.filename);
+    paintLargeCard(previewFace, card);
     let desc_elem = this.preview.getElementsByClassName("card-description")[0];
     this.setDescription(card, desc_elem);
   }
@@ -2076,7 +2155,7 @@ class UI {
         };
 
     await this.queueCarousel(container, 1, action, () => true, false, true);
-    socket.send(JSON.stringify({ type: "containerClosed" }));
+    netSend(JSON.stringify({ type: "containerClosed" }));
   }
 
   // Displays a Carousel menu of filtered container items that match the predicate.
@@ -2090,6 +2169,20 @@ class UI {
     bQuit,
     title,
   ) {
+    if (gameMode === "offline" && container.cards[0]) {
+      const owner = container.cards[0].holder;
+      if (owner && owner.controller instanceof ControllerAI) {
+        for (let n = 0; n < count; n++) {
+          let cards = container.cards.reduce(
+            (a, c, i) => (!predicate || predicate(c) ? a.concat([i]) : a),
+            [],
+          );
+          if (!cards.length) break;
+          await action(container, cards[randomInt(cards.length)]);
+        }
+        return;
+      }
+    }
     let carousel = new Carousel(
       container,
       count,
@@ -2265,7 +2358,7 @@ class Carousel {
     Carousel.setCurrent(this);
 
     if (this.title) {
-      this.title_elem.innerHTML = this.title;
+      this.title_elem.innerHTML = t(this.title);
       this.title_elem.classList.remove("hide");
     } else {
       this.title_elem.classList.add("hide");
@@ -2298,21 +2391,21 @@ class Carousel {
       actionString === "(c,i) => newCard = c.cards[i]"
     ) {
       setTimeout(() => {
-        socket.send(JSON.stringify({ type: "medicDraw", card: resp.filename }));
+        netSend(JSON.stringify({ type: "medicDraw", card: resp.filename }));
       }, 1000);
     } else if (actionString.includes("board.toWeather")) {
       setTimeout(() => {
-        socket.send(
+        netSend(
           JSON.stringify({ type: "weatherDraw", card: resp.filename }),
         );
       }, 1000);
     } else if (actionString.includes("board.toGrave")) {
-      socket.send(
+      netSend(
         JSON.stringify({ type: "removeCardHand", index: this.index }),
       );
     } else if (actionString.includes("board.toHand")) {
       setTimeout(() => {
-        socket.send(
+        netSend(
           JSON.stringify({
             type: "addCardHand",
             cardIndex: this.index,
@@ -2356,10 +2449,12 @@ class Carousel {
         );
         this.previews[i].classList.remove("hide");
         this.previews[i].classList.remove("noclick");
+        paintLargeCard(this.previews[i], card);
       } else {
         this.previews[i].style.backgroundImage = "";
         this.previews[i].classList.add("hide");
         this.previews[i].classList.add("noclick");
+        paintLargeCard(this.previews[i], null);
       }
     }
     ui.setDescription(
@@ -2397,8 +2492,8 @@ class Popup {
     let main = this.elem.children[0];
     main.children[0].innerHTML = header ? header : "";
     main.children[1].innerHTML = description ? description : "";
-    main.children[2].children[0].innerHTML = yesName ? yesName : "Yes";
-    main.children[2].children[1].innerHTML = noName ? noName : "No";
+    main.children[2].children[0].innerHTML = yesName ? yesName : t("yes");
+    main.children[2].children[1].innerHTML = noName ? noName : t("no");
 
     this.elem.classList.remove("hide");
     Popup.setCurrent(this);
@@ -2438,6 +2533,670 @@ class Popup {
 }
 
 // Screen used to customize, import and export deck contents
+var customMode = false;
+var cpuLevel = "normal";
+try {
+  var savedCpu = localStorage.getItem("gwent-cpu");
+  if (savedCpu) cpuLevel = savedCpu;
+} catch (e) {}
+
+function deckProblems(stats, rules) {
+  const problems = [];
+  if (stats.units < rules.minUnits) problems.push("units");
+  if (rules.maxUnits != null && stats.units > rules.maxUnits)
+    problems.push("maxUnits");
+  if (rules.maxDeck != null && stats.total > rules.maxDeck)
+    problems.push("deck");
+  if (stats.special > rules.maxSpecial) problems.push("special");
+  if (rules.maxWeather != null && (stats.weather || 0) > rules.maxWeather)
+    problems.push("weather");
+  if (rules.maxHeroes != null && stats.hero > rules.maxHeroes)
+    problems.push("heroes");
+  if (rules.maxSpies != null && stats.spy > rules.maxSpies)
+    problems.push("spies");
+  if (rules.maxStrength != null && stats.strength > rules.maxStrength)
+    problems.push("strength");
+  return problems;
+}
+
+function readRule(id, fallback) {
+  const raw = document.getElementById(id).value.trim();
+  if (raw === "") return fallback;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+function readCap(id) {
+  const raw = document.getElementById(id).value.trim();
+  if (raw === "") return null;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+function weatherCap() {
+  if (document.getElementById("rule-weather").value === "no") return 0;
+  return readCap("rule-weather-max");
+}
+
+function syncWeatherField() {
+  const row = document.getElementById("rule-weather-max-row");
+  if (row)
+    row.classList.toggle("hide", document.getElementById("rule-weather").value === "no");
+}
+
+function activeRules() {
+  if (!customMode) {
+    return {
+      minUnits: 22,
+      maxUnits: null,
+      maxDeck: null,
+      maxSpecial: 10,
+      maxHeroes: null,
+      maxSpies: null,
+      maxStrength: null,
+      maxWeather: null,
+    };
+  }
+  return {
+    minUnits: readRule("rule-units", 22),
+    maxUnits: readCap("rule-units-max"),
+    maxDeck: readCap("rule-deck"),
+    maxSpecial: readRule("rule-special", 10),
+    maxHeroes: readCap("rule-heroes"),
+    maxSpies: readCap("rule-spies"),
+    maxStrength: readCap("rule-strength"),
+    maxWeather: weatherCap(),
+  };
+}
+
+function classicLimits() {
+  return {
+    minUnits: 22,
+    maxUnits: null,
+    maxDeck: null,
+    maxSpecial: 10,
+    maxHeroes: null,
+    maxSpies: null,
+    maxStrength: null,
+    maxWeather: null,
+  };
+}
+
+function cpuProfile(level) {
+  if (level === "principiante")
+    return { maxUnits: 22, maxDeck: 24, maxSpecial: 1, maxHeroes: 0, maxSpies: 0, maxWeather: 0 };
+  if (level === "facil")
+    return { maxUnits: 24, maxDeck: 28, maxSpecial: 3, maxHeroes: 1, maxSpies: 0, maxWeather: 1 };
+  if (level === "dificil")
+    return { maxUnits: 30, maxSpecial: 8, maxWeather: 2 };
+  if (level === "experto")
+    return { maxUnits: 36, maxSpecial: 10, maxWeather: 3 };
+  if (level === "demencia") return { maxSpecial: 10 };
+  return null;
+}
+
+function tightenRules(base, extra) {
+  const out = Object.assign({}, base);
+  ["maxUnits", "maxDeck", "maxSpecial", "maxHeroes", "maxSpies", "maxStrength", "maxWeather"].forEach(
+    function (key) {
+      if (extra[key] == null) return;
+      out[key] = out[key] == null ? extra[key] : Math.min(out[key], extra[key]);
+    },
+  );
+  if (out.maxUnits != null && out.minUnits > out.maxUnits) out.minUnits = out.maxUnits;
+  if (out.maxDeck != null && out.minUnits > out.maxDeck) out.minUnits = out.maxDeck;
+  return out;
+}
+
+function factionCopies(faction) {
+  const copies = [];
+  card_dict.forEach(function (data, index) {
+    if (data.row === "leader") return;
+    if (![faction, "neutral", "weather", "special"].includes(data.deck)) return;
+    const special = data.deck === "special" || data.deck === "weather";
+    const ability = String(data.ability || "").split(" ");
+    const n = Number(data.count) || 0;
+    for (let i = 0; i < n; i++) {
+      copies.push({
+        index: index,
+        special: special,
+        weather: data.deck === "weather",
+        hero: !special && ability.includes("hero"),
+        spy: !special && ability.includes("spy"),
+        strength: special ? 0 : Number(data.strength) || 0,
+      });
+    }
+  });
+  return copies;
+}
+
+function buildLevelDeck(copies, rules, strong) {
+  const units = copies
+    .filter(function (c) {
+      return !c.special;
+    })
+    .slice()
+    .sort(function (a, b) {
+      return strong ? b.strength - a.strength : a.strength - b.strength;
+    });
+  const specials = copies.filter(function (c) {
+    return c.special;
+  });
+  const chosen = [];
+  let hero = 0;
+  let spy = 0;
+  let weather = 0;
+  let spec = 0;
+  const unitTarget =
+    rules.maxUnits == null ? (strong ? units.length : rules.minUnits) : rules.maxUnits;
+  for (let i = 0; i < units.length; i++) {
+    const card = units[i];
+    const unitCount = chosen.length - spec;
+    if (unitCount >= unitTarget) break;
+    if (rules.maxDeck != null && chosen.length >= rules.maxDeck) break;
+    if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes) continue;
+    if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies) continue;
+    chosen.push(card);
+    if (card.hero) hero++;
+    if (card.spy) spy++;
+  }
+  if (!strong && rules.maxHeroes > 0 && hero < rules.maxHeroes) {
+    const weakestHero = units
+      .filter(function (c) {
+        return c.hero && (rules.maxSpies == null || rules.maxSpies > 0 || !c.spy);
+      })
+      .sort(function (a, b) {
+        return a.strength - b.strength;
+      })[0];
+    if (weakestHero) {
+      let swap = -1;
+      let best = -1;
+      chosen.forEach(function (c, i) {
+        if (c.special || c.hero || c.strength < best) return;
+        best = c.strength;
+        swap = i;
+      });
+      if (swap >= 0) chosen[swap] = weakestHero;
+    }
+  }
+  const ordered = strong
+    ? specials.slice()
+    : specials.filter(function (c) { return !c.weather; }).concat(
+        specials.filter(function (c) { return c.weather; }),
+      );
+  for (let i = 0; i < ordered.length; i++) {
+    const card = ordered[i];
+    if (rules.maxDeck != null && chosen.length >= rules.maxDeck) break;
+    if (spec >= rules.maxSpecial) break;
+    if (card.weather && rules.maxWeather != null && weather >= rules.maxWeather) continue;
+    chosen.push(card);
+    spec++;
+    if (card.weather) weather++;
+  }
+  if (chosen.length - spec < rules.minUnits && chosen.length - spec < 10) return null;
+  const counts = {};
+  chosen.forEach(function (c) {
+    counts[c.index] = (counts[c.index] || 0) + 1;
+  });
+  return Object.keys(counts).map(function (index) {
+    return { index: Number(index), count: counts[index] };
+  });
+}
+
+(function checkCpuDeck() {
+  const copies = [];
+  for (let i = 0; i < 30; i++)
+    copies.push({
+      index: i,
+      special: false,
+      weather: false,
+      hero: i < 5,
+      spy: i >= 5 && i < 9,
+      strength: i < 5 ? 10 : 2,
+    });
+  const easy = buildLevelDeck(copies, tightenRules(classicLimits(), cpuProfile("principiante")), false);
+  const heroes = easy.filter(function (c) { return c.index < 5; }).length;
+  const spies = easy.filter(function (c) { return c.index >= 5 && c.index < 9; }).length;
+  if (!easy || heroes || spies || easy.reduce(function (a, c) { return a + c.count; }, 0) > 24)
+    console.error("cpu principiante");
+  const hard = buildLevelDeck(copies, tightenRules(classicLimits(), cpuProfile("demencia")), true);
+  const hardHeroes = hard.filter(function (c) { return c.index < 5; }).reduce(function (a, c) { return a + c.count; }, 0);
+  if (!hard || hardHeroes < 5) console.error("cpu demencia");
+})();
+
+function trimToRules(cards, rules) {
+  const list = [];
+  cards.forEach(function (c) {
+    const data = card_dict[c.index];
+    if (!data) return;
+    for (let i = 0; i < c.count; i++) list.push(data);
+  });
+  function isSpecial(c) {
+    return c.deck === "special" || c.deck === "weather";
+  }
+  function parts(c) {
+    return String(c.ability || "").split(" ");
+  }
+  function tally() {
+    const s = { special: 0, hero: 0, spy: 0, strength: 0, units: 0, total: list.length, weather: 0 };
+    list.forEach(function (c) {
+      if (isSpecial(c)) {
+        s.special++;
+        if (c.deck === "weather") s.weather++;
+        return;
+      }
+      s.units++;
+      s.strength += Number(c.strength) || 0;
+      if (parts(c).includes("hero")) s.hero++;
+      if (parts(c).includes("spy")) s.spy++;
+    });
+    return s;
+  }
+  function drop(pred) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (!pred(list[i])) continue;
+      list.splice(i, 1);
+      return true;
+    }
+    return false;
+  }
+  function dropStrongest() {
+    let best = -1;
+    let bi = -1;
+    list.forEach(function (c, i) {
+      if (isSpecial(c)) return;
+      const p = Number(c.strength) || 0;
+      if (p < best) return;
+      best = p;
+      bi = i;
+    });
+    if (bi < 0) return false;
+    list.splice(bi, 1);
+    return true;
+  }
+  function dropWeakestUnit() {
+    let best = Infinity;
+    let bi = -1;
+    let heroBest = Infinity;
+    let heroBi = -1;
+    list.forEach(function (c, i) {
+      if (isSpecial(c)) return;
+      const p = Number(c.strength) || 0;
+      if (parts(c).includes("hero")) {
+        if (p > heroBest) return;
+        heroBest = p;
+        heroBi = i;
+        return;
+      }
+      if (p > best) return;
+      best = p;
+      bi = i;
+    });
+    const i = bi >= 0 ? bi : heroBi;
+    if (i < 0) return false;
+    list.splice(i, 1);
+    return true;
+  }
+  let s = tally();
+  while (rules.maxWeather != null && s.weather > rules.maxWeather && drop(function (c) {
+    return c.deck === "weather";
+  }))
+    s = tally();
+  while (s.special > rules.maxSpecial && drop(isSpecial)) s = tally();
+  while (
+    rules.maxHeroes != null &&
+    s.hero > rules.maxHeroes &&
+    drop(function (c) {
+      return parts(c).includes("hero");
+    })
+  )
+    s = tally();
+  while (
+    rules.maxSpies != null &&
+    s.spy > rules.maxSpies &&
+    drop(function (c) {
+      return parts(c).includes("spy");
+    })
+  )
+    s = tally();
+  while (
+    rules.maxStrength != null &&
+    s.strength > rules.maxStrength &&
+    dropStrongest()
+  )
+    s = tally();
+  while (rules.maxUnits != null && s.units > rules.maxUnits && dropWeakestUnit())
+    s = tally();
+  while (rules.maxDeck != null && s.total > rules.maxDeck && (drop(isSpecial) || dropWeakestUnit()))
+    s = tally();
+  const grouped = [];
+  list.forEach(function (c) {
+    const index = card_dict.indexOf(c);
+    let row = grouped.find(function (g) {
+      return g.index === index;
+    });
+    if (!row) {
+      row = { index: index, count: 0 };
+      grouped.push(row);
+    }
+    row.count++;
+  });
+  return grouped;
+}
+
+(function checkDeckRules() {
+  const classic = {
+    minUnits: 22,
+    maxUnits: null,
+    maxDeck: null,
+    maxSpecial: 10,
+    maxHeroes: null,
+    maxSpies: null,
+    maxStrength: null,
+  };
+  const full = { units: 22, total: 32, special: 10, hero: 9, spy: 4, strength: 200 };
+  if (deckProblems(full, classic).length)
+    console.error("classic deck rejected");
+  const wet = { units: 22, total: 24, special: 2, hero: 0, spy: 0, strength: 40, weather: 2 };
+  if (deckProblems(wet, Object.assign({}, classic, { maxWeather: 0 })).join() !== "weather")
+    console.error("weather cap");
+  const weatherCopies = [];
+  for (let i = 0; i < 22; i++)
+    weatherCopies.push({
+      index: i,
+      special: false,
+      hero: false,
+      spy: false,
+      strength: 2,
+      weather: false,
+    });
+  for (let i = 0; i < 4; i++)
+    weatherCopies.push({
+      index: 50 + i,
+      special: true,
+      hero: false,
+      spy: false,
+      strength: 0,
+      weather: true,
+    });
+  const noWeather = buildRandomCounts(
+    weatherCopies,
+    Object.assign({}, classic, { maxWeather: 0 }),
+    function () {
+      return 0.999;
+    },
+  );
+  if (!noWeather || noWeather.stats.weather !== 0) console.error("random weather");
+  const short = { units: 21, total: 32, special: 11, hero: 9, spy: 4, strength: 200 };
+  if (deckProblems(short, classic).join() !== "units,special")
+    console.error("classic deck problems");
+  const capped = {
+    minUnits: 22,
+    maxUnits: null,
+    maxDeck: null,
+    maxSpecial: 10,
+    maxHeroes: 2,
+    maxSpies: 1,
+    maxStrength: 100,
+  };
+  if (deckProblems(full, capped).join() !== "heroes,spies,strength")
+    console.error("custom deck problems");
+  const sized = Object.assign({}, capped, { maxUnits: 20, maxDeck: 25, maxHeroes: null, maxSpies: null, maxStrength: null });
+  const sizedStats = { units: 22, total: 32, special: 10, hero: 2, spy: 1, strength: 90 };
+  if (deckProblems(sizedStats, sized).join() !== "maxUnits,deck")
+    console.error("deck size problems");
+  const copies = [];
+  for (let i = 0; i < 30; i++)
+    copies.push({
+      index: i,
+      special: false,
+      hero: i < 4,
+      spy: i >= 4 && i < 8,
+      strength: 5,
+    });
+  for (let i = 0; i < 12; i++)
+    copies.push({
+      index: 100 + i,
+      special: true,
+      hero: false,
+      spy: false,
+      strength: 0,
+    });
+  const rolled = buildRandomCounts(copies, classic, function () {
+    return 0;
+  });
+  if (
+    !rolled ||
+    rolled.stats.units !== 22 ||
+    rolled.stats.special !== 0 ||
+    deckProblems(rolled.stats, classic).length
+  )
+    console.error("random classic");
+  const tight = Object.assign({}, classic, {
+    maxUnits: 24,
+    maxDeck: 26,
+    maxHeroes: 1,
+    maxSpies: 1,
+    maxSpecial: 2,
+  });
+  const tightRoll = buildRandomCounts(copies, tight, function () {
+    return 0.999;
+  });
+  if (
+    !tightRoll ||
+    deckProblems(tightRoll.stats, tight).length ||
+    tightRoll.stats.hero > 1 ||
+    tightRoll.stats.spy > 1 ||
+    tightRoll.stats.total > 26
+  )
+    console.error("random tight");
+  if (buildRandomCounts(copies.slice(0, 3), classic, Math.random))
+    console.error("random should fail");
+})();
+
+function buildRandomCounts(copies, rules, rng) {
+  function rnd(n) {
+    return Math.floor((rng || Math.random)() * n);
+  }
+  function shuffle(list) {
+    const arr = list.slice();
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = rnd(i + 1);
+      const tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+    return arr;
+  }
+  function attempt(units, specials) {
+    let unitHi =
+      rules.maxUnits == null ? rules.minUnits : Math.min(rules.maxUnits, units.length);
+    if (rules.maxDeck != null) unitHi = Math.min(unitHi, rules.maxDeck);
+    if (unitHi < rules.minUnits || units.length < rules.minUnits) return null;
+    const unitTarget = rules.minUnits + rnd(unitHi - rules.minUnits + 1);
+    let specialHi = Math.min(rules.maxSpecial, specials.length);
+    if (rules.maxDeck != null)
+      specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - unitTarget));
+    const specialTarget = specialHi === 0 ? 0 : rnd(specialHi + 1);
+    const chosen = [];
+    let hero = 0;
+    let spy = 0;
+    let strength = 0;
+    let unitCount = 0;
+    for (let i = 0; i < units.length && unitCount < unitTarget; i++) {
+      const card = units[i];
+      if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes)
+        continue;
+      if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies)
+        continue;
+      if (rules.maxStrength != null && strength + card.strength > rules.maxStrength)
+        continue;
+      chosen.push(card);
+      unitCount++;
+      if (card.hero) hero++;
+      if (card.spy) spy++;
+      strength += card.strength;
+    }
+    if (unitCount < rules.minUnits) return null;
+    let spec = 0;
+    let weather = 0;
+    for (let i = 0; i < specials.length && spec < specialTarget; i++) {
+      if (rules.maxDeck != null && chosen.length >= rules.maxDeck) break;
+      if (
+        specials[i].weather &&
+        rules.maxWeather != null &&
+        weather >= rules.maxWeather
+      )
+        continue;
+      chosen.push(specials[i]);
+      spec++;
+      if (specials[i].weather) weather++;
+    }
+    const counts = {};
+    chosen.forEach(function (c) {
+      counts[c.index] = (counts[c.index] || 0) + 1;
+    });
+    const stats = {
+      total: chosen.length,
+      units: unitCount,
+      special: spec,
+      hero: hero,
+      spy: spy,
+      strength: strength,
+      weather: weather,
+    };
+    if (deckProblems(stats, rules).length) return null;
+    return { counts: counts, stats: stats };
+  }
+  const unitCopies = copies.filter(function (c) {
+    return !c.special;
+  });
+  const specialCopies = copies.filter(function (c) {
+    return c.special;
+  });
+  let chosen = null;
+  for (let n = 0; n < 24 && !chosen; n++)
+    chosen = attempt(shuffle(unitCopies), shuffle(specialCopies));
+  if (!chosen && rules.maxStrength != null) {
+    const weak = unitCopies.slice().sort(function (a, b) {
+      return a.strength - b.strength;
+    });
+    chosen = attempt(weak, shuffle(specialCopies));
+  }
+  return chosen;
+}
+
+function weakestUnitStrength(units, rules) {
+  const order = units.slice().sort(function (a, b) {
+    return a.strength - b.strength;
+  });
+  let hero = 0;
+  let spy = 0;
+  let strength = 0;
+  let n = 0;
+  for (let i = 0; i < order.length && n < rules.minUnits; i++) {
+    const card = order[i];
+    if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes)
+      continue;
+    if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies) continue;
+    n++;
+    if (card.hero) hero++;
+    if (card.spy) spy++;
+    strength += card.strength;
+  }
+  if (n < rules.minUnits) return null;
+  return strength;
+}
+
+function randomLimitText(copies, rules, factionName) {
+  const units = copies.filter(function (c) {
+    return !c.special;
+  });
+  const heroes = units.filter(function (c) {
+    return c.hero;
+  }).length;
+  const spies = units.filter(function (c) {
+    return c.spy;
+  }).length;
+  const lines = [tf("random_fail", { faction: factionName })];
+  if (rules.maxUnits != null && rules.maxUnits < rules.minUnits)
+    lines.push(tf("random_need_unit_order", { min: rules.minUnits, max: rules.maxUnits }));
+  if (rules.maxDeck != null && rules.maxDeck < rules.minUnits)
+    lines.push(tf("random_need_deck", { min: rules.minUnits, max: rules.maxDeck }));
+  if (units.length < rules.minUnits)
+    lines.push(tf("random_need_units", { min: rules.minUnits, have: units.length }));
+  if (rules.maxHeroes != null) {
+    const plain = units.length - heroes;
+    if (plain + Math.min(heroes, rules.maxHeroes) < rules.minUnits)
+      lines.push(
+        tf("random_need_heroes", {
+          min: rules.minUnits,
+          cap: rules.maxHeroes,
+          have: heroes,
+          plain: plain,
+        }),
+      );
+  }
+  if (rules.maxSpies != null) {
+    const plain = units.length - spies;
+    if (plain + Math.min(spies, rules.maxSpies) < rules.minUnits)
+      lines.push(
+        tf("random_need_spies", {
+          min: rules.minUnits,
+          cap: rules.maxSpies,
+          have: spies,
+          plain: plain,
+        }),
+      );
+  }
+  const weakest = weakestUnitStrength(units, rules);
+  if (rules.maxStrength != null && weakest != null && weakest > rules.maxStrength)
+    lines.push(
+      tf("random_need_strength", {
+        min: rules.minUnits,
+        need: weakest,
+        cap: rules.maxStrength,
+      }),
+    );
+  if (lines.length === 1) lines.push(t("random_need_together"));
+  lines.push(
+    tf("random_pool", {
+      faction: factionName,
+      units: units.length,
+      heroes: heroes,
+      spies: spies,
+      specials: copies.length - units.length,
+    }),
+  );
+  return lines.join("\n");
+}
+
+(function checkRandomLimitText() {
+  const copies = [];
+  for (let i = 0; i < 10; i++)
+    copies.push({
+      index: i,
+      special: false,
+      hero: false,
+      spy: false,
+      strength: 4,
+    });
+  const rules = {
+    minUnits: 22,
+    maxUnits: 10,
+    maxDeck: 15,
+    maxSpecial: 10,
+    maxHeroes: null,
+    maxSpies: null,
+    maxStrength: null,
+  };
+  const text = randomLimitText(copies, rules, "Test");
+  if (text.indexOf("22") < 0 || text.indexOf("10") < 0 || text.indexOf("Test") < 0)
+    console.error("random limit text");
+})();
+
 class DeckMaker {
   constructor() {
     this.elem = customizationElem;
@@ -2472,11 +3231,99 @@ class DeckMaker {
       .getElementById("download-deck")
       .addEventListener("click", () => this.downloadDeck(), false);
     document
+      .getElementById("empty-deck")
+      .addEventListener("click", () => this.emptyDeck(), false);
+    document
+      .getElementById("random-deck")
+      .addEventListener("click", () => this.randomDeck(), false);
+    document
+      .getElementById("offline-game")
+      .addEventListener("click", () => this.startOffline(), false);
+    const cpuSelect = document.getElementById("cpu-level");
+    if (["principiante", "facil", "normal", "dificil", "experto", "demencia"].indexOf(cpuLevel) < 0)
+      cpuLevel = "normal";
+    cpuSelect.value = cpuLevel;
+    cpuSelect.addEventListener("change", () => {
+      cpuLevel = cpuSelect.value;
+      try {
+        localStorage.setItem("gwent-cpu", cpuLevel);
+      } catch (e) {}
+    });
+    document.getElementById("custom-mode").addEventListener("click", () => {
+      customMode = !customMode;
+      document.getElementById("custom-mode").classList.toggle("on", customMode);
+      document.getElementById("custom-panel").classList.toggle("hide", !customMode);
+      this.updateStats();
+    });
+    document.getElementById("custom-panel").addEventListener("input", () => {
+      if (customMode) this.updateStats();
+    });
+    document.getElementById("rule-weather").addEventListener("change", () => {
+      syncWeatherField();
+      if (customMode) this.updateStats();
+    });
+    document.getElementById("rule-reset").addEventListener("click", () => {
+      document.getElementById("rule-units").value = 22;
+      document.getElementById("rule-units-max").value = "";
+      document.getElementById("rule-deck").value = "";
+      document.getElementById("rule-special").value = 10;
+      document.getElementById("rule-heroes").value = "";
+      document.getElementById("rule-spies").value = "";
+    document.getElementById("rule-strength").value = "";
+    document.getElementById("rule-weather").value = "yes";
+    document.getElementById("rule-weather-max").value = "";
+    syncWeatherField();
+    this.updateStats();
+    });
+    document
       .getElementById("add-file")
       .addEventListener("change", () => this.uploadDeck(), false);
     readyButtonElem.addEventListener("click", () => this.startNewGame(), false);
     somCarta();
 
+    this.update();
+  }
+
+  // Builds a random deck of the current faction inside the active limits.
+  randomDeck() {
+    const rules = activeRules();
+    const copies = [];
+    for (let i = 0; i < this.bank.length; i++) {
+      const data = card_dict[this.bank[i].index];
+      const total = this.bank[i].count + (this.deck[i] ? this.deck[i].count : 0);
+      const special = data.deck === "special" || data.deck === "weather";
+      const ability = String(data.ability || "").split(" ");
+      for (let n = 0; n < total; n++) {
+        copies.push({
+          index: this.bank[i].index,
+          special: special,
+          weather: data.deck === "weather",
+          hero: !special && ability.includes("hero"),
+          spy: !special && ability.includes("spy"),
+          strength: special ? 0 : Number(data.strength) || 0,
+        });
+      }
+    }
+    const rolled = buildRandomCounts(copies, rules);
+    if (!rolled) {
+      const factionName =
+        typeof factionField === "function"
+          ? factionField(this.faction, "name")
+          : this.faction;
+      alert(randomLimitText(copies, rules, factionName));
+      return;
+    }
+    for (let i = 0; i < this.bank.length; i++) {
+      const total = this.bank[i].count + this.deck[i].count;
+      const want = Math.min(total, rolled.counts[this.bank[i].index] || 0);
+      this.deck[i].count = want;
+      this.bank[i].count = total - want;
+      this.deck[i].elem.children[0].innerHTML = want;
+      this.bank[i].elem.children[0].innerHTML = total - want;
+    }
+    if (this.leaders.length)
+      this.setLeader(this.leaders[randomInt(this.leaders.length)].index);
+    tocar("menu_buy", false);
     this.update();
   }
 
@@ -2486,24 +3333,28 @@ class DeckMaker {
     if (!silent) {
       tocar("warning", false);
       if (
-        !confirm("Changing factions will clear the current deck. Continue? ")
+        !confirm(t("confirm_faction"))
       ) {
         tocar("warning", false);
         return false;
       }
 
-      socket.send(
+      netSend(
         JSON.stringify({ type: "opChangeFaction", faction: faction_name }),
       );
     }
 
-    this.elem.getElementsByTagName("h1")[0].innerHTML =
-      factions[faction_name].name;
+    this.elem.getElementsByTagName("h1")[0].innerHTML = factionField(
+      faction_name,
+      "name",
+    );
     this.elem.getElementsByTagName("h1")[0].style.backgroundImage = iconURL(
       "deck_shield_" + faction_name,
     );
-    document.getElementById("faction-description").innerHTML =
-      factions[faction_name].description;
+    document.getElementById("faction-description").innerHTML = factionField(
+      faction_name,
+      "description",
+    );
 
     this.leaders = card_dict
       .map((c, i) => ({ index: i, card: c }))
@@ -2513,6 +3364,7 @@ class DeckMaker {
       this.leader_elem.children[1].style.backgroundImage = largeURL(
         this.leader.card.deck + "_" + this.leader.card.filename,
       );
+      paintLargeCard(this.leader_elem.children[1], this.leader.card);
     }
     this.faction = faction_name;
     setTimeout(function () {
@@ -2527,6 +3379,7 @@ class DeckMaker {
     this.leader_elem.children[1].style.backgroundImage = largeURL(
       this.leader.card.deck + "_" + this.leader.card.filename,
     );
+    paintLargeCard(this.leader_elem.children[1], this.leader.card);
   }
 
   // Constructs a bank of cards that can be used by the faction's deck.
@@ -2574,6 +3427,7 @@ class DeckMaker {
       card_data.deck + "_" + card_data.filename,
     );
     elem.classList.add("card-lg");
+    paintLargeCard(elem, card_data);
     let count = document.createElement("div");
     elem.appendChild(count);
     container_elem.appendChild(elem);
@@ -2598,7 +3452,9 @@ class DeckMaker {
       units = 0,
       special = 0,
       strength = 0,
-      hero = 0;
+      hero = 0,
+      spy = 0,
+      weather = 0;
     for (let x of this.deck) {
       let card_data = card_dict[x.index];
       if (x.count) x.elem.classList.remove("hide");
@@ -2606,11 +3462,14 @@ class DeckMaker {
       total += x.count;
       if (card_data.deck === "special" || card_data.deck === "weather") {
         special += x.count;
+        if (card_data.deck === "weather") weather += x.count;
         continue;
       }
       units += x.count;
       strength += card_data.strength * x.count;
-      if (card_data.ability.split(" ").includes("hero")) hero += x.count;
+      const ability = String(card_data.ability || "").split(" ");
+      if (ability.includes("hero")) hero += x.count;
+      if (ability.includes("spy")) spy += x.count;
     }
     this.stats = {
       total: total,
@@ -2618,6 +3477,8 @@ class DeckMaker {
       special: special,
       strength: strength,
       hero: hero,
+      spy: spy,
+      weather: weather,
     };
     this.updateStats();
   }
@@ -2625,15 +3486,99 @@ class DeckMaker {
   // Updates and displays the statistics describing the cards currently in the deck
   updateStats() {
     let stats = document.getElementById("deck-stats");
-    stats.children[1].innerHTML = this.stats.total;
+    const rules = activeRules();
+    stats.classList.toggle("custom", customMode);
+    const spyEl = document.getElementById("stat-spies-value");
+    if (!customMode) {
+      stats.children[1].innerHTML = this.stats.total;
+      stats.children[1].style.color = "";
+      stats.children[3].innerHTML =
+        this.stats.units + (this.stats.units < 22 ? "/22" : "");
+      stats.children[5].innerHTML = this.stats.special + "/10";
+      stats.children[7].innerHTML = this.stats.strength;
+      stats.children[9].innerHTML = this.stats.hero;
+      stats.children[3].style.color = this.stats.units < 22 ? "red" : "";
+      stats.children[5].style.color = this.stats.special > 10 ? "red" : "";
+      stats.children[7].style.color = "";
+      stats.children[9].style.color = "";
+      return;
+    }
+    stats.children[1].innerHTML =
+      this.stats.total + (rules.maxDeck == null ? "" : "/" + rules.maxDeck);
+    stats.children[1].style.color =
+      rules.maxDeck != null && this.stats.total > rules.maxDeck ? "red" : "";
     stats.children[3].innerHTML =
-      this.stats.units + (this.stats.units < 22 ? "/22" : "");
-    stats.children[5].innerHTML = this.stats.special + "/10";
-    stats.children[7].innerHTML = this.stats.strength;
-    stats.children[9].innerHTML = this.stats.hero;
+      this.stats.units +
+      "/" +
+      rules.minUnits +
+      (rules.maxUnits == null ? "" : "-" + rules.maxUnits);
+    stats.children[5].innerHTML = this.stats.special + "/" + rules.maxSpecial;
+    stats.children[7].innerHTML =
+      this.stats.strength +
+      (rules.maxStrength == null ? "" : "/" + rules.maxStrength);
+    stats.children[9].innerHTML =
+      this.stats.hero + (rules.maxHeroes == null ? "" : "/" + rules.maxHeroes);
+    if (spyEl)
+      spyEl.innerHTML =
+        this.stats.spy + (rules.maxSpies == null ? "" : "/" + rules.maxSpies);
+    const weatherEl = document.getElementById("stat-weather-value");
+    if (weatherEl)
+      weatherEl.innerHTML =
+        this.stats.weather +
+        (rules.maxWeather == null ? "" : "/" + rules.maxWeather);
+    stats.children[3].style.color =
+      this.stats.units < rules.minUnits ||
+      (rules.maxUnits != null && this.stats.units > rules.maxUnits)
+        ? "red"
+        : "";
+    stats.children[5].style.color =
+      this.stats.special > rules.maxSpecial ? "red" : "";
+    stats.children[7].style.color =
+      rules.maxStrength != null && this.stats.strength > rules.maxStrength
+        ? "red"
+        : "";
+    stats.children[9].style.color =
+      rules.maxHeroes != null && this.stats.hero > rules.maxHeroes ? "red" : "";
+    if (spyEl)
+      spyEl.style.color =
+        rules.maxSpies != null && this.stats.spy > rules.maxSpies ? "red" : "";
+    if (weatherEl)
+      weatherEl.style.color =
+        rules.maxWeather != null && this.stats.weather > rules.maxWeather
+          ? "red"
+          : "";
+  }
 
-    stats.children[3].style.color = this.stats.units < 22 ? "red" : "";
-    stats.children[5].style.color = this.stats.special > 10 ? "red" : "";
+  deckWarning() {
+    if (!customMode) {
+      let warning = "";
+      if (this.stats.units < 22) warning += t("need_units");
+      if (this.stats.special > 10) warning += t("need_special_max");
+      return warning;
+    }
+    const rules = activeRules();
+    let warning = "";
+    if (rules.maxUnits != null && rules.maxUnits < rules.minUnits)
+      warning += t("need_unit_range");
+    if (this.stats.units < rules.minUnits)
+      warning += tf("need_units_n", { n: rules.minUnits });
+    if (rules.maxUnits != null && this.stats.units > rules.maxUnits)
+      warning += tf("need_units_max", { n: rules.maxUnits });
+    if (rules.maxDeck != null && this.stats.total > rules.maxDeck)
+      warning += tf("need_deck", { n: rules.maxDeck });
+    if (this.stats.special > rules.maxSpecial)
+      warning += tf("need_special_n", { n: rules.maxSpecial });
+    if (rules.maxHeroes != null && this.stats.hero > rules.maxHeroes)
+      warning += tf("need_heroes", { n: rules.maxHeroes });
+    if (rules.maxSpies != null && this.stats.spy > rules.maxSpies)
+      warning += tf("need_spies", { n: rules.maxSpies });
+    if (rules.maxStrength != null && this.stats.strength > rules.maxStrength)
+      warning += tf("need_strength", { n: rules.maxStrength });
+    if (rules.maxWeather === 0 && this.stats.weather > 0)
+      warning += t("need_weather_none");
+    else if (rules.maxWeather != null && this.stats.weather > rules.maxWeather)
+      warning += tf("need_weather", { n: rules.maxWeather });
+    return warning;
   }
 
   // Opens a Carousel to allow the client to select a leader for their deck
@@ -2655,6 +3600,7 @@ class DeckMaker {
         this.leader_elem.children[1].style.backgroundImage = largeURL(
           data.card.deck + "_" + data.card.filename,
         );
+        paintLargeCard(this.leader_elem.children[1], data.card);
       },
       () => true,
       false,
@@ -2671,8 +3617,8 @@ class DeckMaker {
       return {
         abilities: [f],
         filename: f,
-        desc_name: factions[f].name,
-        desc: factions[f].description,
+        desc_name: factionField(f, "name"),
+        desc: factionField(f, "description"),
         faction: "faction",
       };
     });
@@ -2734,6 +3680,20 @@ class DeckMaker {
     id.elem.children[0].innerHTML = --id.count;
   }
 
+  // Returns every card in the deck to the collection. The leader stays.
+  emptyDeck() {
+    tocar("discard", false);
+    for (let i = 0; i < this.deck.length; i++) {
+      let copies = this.deck[i].count;
+      if (!copies || !this.bank[i]) continue;
+      this.bank[i].count += copies;
+      this.bank[i].elem.children[0].innerHTML = this.bank[i].count;
+      this.deck[i].count = 0;
+      this.deck[i].elem.children[0].innerHTML = 0;
+    }
+    this.update();
+  }
+
   // Removes all elements in the bank and deck
   clear() {
     while (this.bank_elem.firstChild)
@@ -2751,21 +3711,16 @@ class DeckMaker {
       amReady = false;
       readyButtonElem.classList.remove("ready");
       customizationElem.classList.remove("noclick");
-      socket.send(JSON.stringify({ type: "unReady" }));
+      netSend(JSON.stringify({ type: "unReady" }));
       return;
     }
 
-    let warning = "";
-    if (this.stats.units < 22)
-      warning += "Your deck must have at least 22 unit cards. \n";
-    if (this.stats.special > 10)
-      warning += "Your deck must have no more than 10 special cards. \n";
+    let warning = this.deckWarning();
 
     if (warning != "") return alert(warning);
-    else {
-      readyButtonElem.classList.add("ready");
-      customizationElem.classList.add("noclick");
-    }
+    gameMode = "online";
+    readyButtonElem.classList.add("ready");
+    customizationElem.classList.add("noclick");
 
     let me_deck = {
       faction: this.faction,
@@ -2774,12 +3729,58 @@ class DeckMaker {
     };
 
     player_me = new Player(0, "you", me_deck);
-    socket.send(JSON.stringify({ type: "ready", deck: me_deck }));
+    netSend(JSON.stringify({ type: "ready", deck: me_deck }));
     amReady = true;
     if (oponentReady) {
       this.elem.classList.add("hide");
       game.startGame();
     }
+  }
+
+  startOffline() {
+    let warning = this.deckWarning();
+    if (warning) return alert(warning);
+
+    gameMode = "offline";
+    let me_deck = {
+      faction: this.faction,
+      leader: card_dict[this.leader.index],
+      cards: this.deck.filter((x) => x.count > 0),
+    };
+    let choices = premade_deck.filter((d) => d.faction !== this.faction);
+    if (!choices.length) choices = premade_deck;
+    let pick = choices[randomInt(choices.length)];
+    let leaders = card_dict.filter(
+      (c) => c.row === "leader" && c.deck === pick.faction,
+    );
+    let opCards = pick.cards.map((c) =>
+      Array.isArray(c) ? { index: c[0], count: c[1] } : { index: c.index, count: c.count },
+    );
+    const profile = cpuProfile(cpuLevel);
+    if (!profile) {
+      if (customMode) opCards = trimToRules(opCards, activeRules());
+    } else {
+      const rules = tightenRules(customMode ? activeRules() : classicLimits(), profile);
+      const built = buildLevelDeck(
+        factionCopies(pick.faction),
+        rules,
+        cpuLevel !== "principiante" && cpuLevel !== "facil",
+      );
+      if (built) opCards = built;
+      else if (customMode) opCards = trimToRules(opCards, activeRules());
+    }
+    let op_deck = {
+      faction: pick.faction,
+      leader: leaders[randomInt(leaders.length)],
+      cards: opCards,
+    };
+
+    player_me = new Player(0, "you", me_deck);
+    player_op = new Player(1, "Oponent", op_deck);
+    this.elem.classList.add("hide");
+    customizationElem.classList.add("hide");
+    gameStartControlsElem.classList.add("hide");
+    game.startGame();
   }
 
   // Converts the current deck to a JSON string
@@ -2813,7 +3814,7 @@ class DeckMaker {
       try {
         this.deckFromJSON(e.target.result);
       } catch (e) {
-        alert("Uploaded deck is not formatted correctly!");
+        alert(t("deck_bad_format"));
       }
     };
     fr.readAsText(files.item(0));
@@ -2827,20 +3828,17 @@ class DeckMaker {
     try {
       deck = JSON.parse(json);
     } catch (e) {
-      alert("Uploaded deck is not parsable!");
+      alert(t("deck_unparsable"));
       return;
     }
     let warning = "";
     if (card_dict[deck.leader].row !== "leader")
-      warning +=
-        "'" + card_dict[deck.leader].name + "' is cannot be used as a leader\n";
+      warning += tf("not_a_leader", { name: card_dict[deck.leader].name });
     if (deck.faction != card_dict[deck.leader].deck)
-      warning +=
-        "Leader '" +
-        card_dict[deck.leader].name +
-        "' doesn't match deck faction '" +
-        deck.faction +
-        "'.\n";
+      warning += tf("leader_faction_mismatch", {
+        name: card_dict[deck.leader].name,
+        faction: factionField(deck.faction, "name") || deck.faction,
+      });
 
     let cards = deck.cards
       .filter((c) => {
@@ -2852,23 +3850,18 @@ class DeckMaker {
         if (
           ![deck.faction, "neutral", "special", "weather"].includes(card.deck)
         ) {
-          warning +=
-            "'" +
-            card.name +
-            "' cannot be used in a deck of faction type '" +
-            deck.faciton +
-            "'\n";
+          warning += tf("card_wrong_faction", {
+            name: card.name,
+            faction: factionField(deck.faction, "name") || deck.faction,
+          });
           return false;
         }
         if (card.count < c[1]) {
-          warning +=
-            "Deck contains " +
-            c[1] +
-            "/" +
-            card.count +
-            " available " +
-            card_dict[c.index].name +
-            " cards\n";
+          warning += tf("too_many_copies", {
+            have: c[1],
+            max: card.count,
+            name: card.name,
+          });
           return false;
         }
         return true;
@@ -2878,9 +3871,9 @@ class DeckMaker {
         count: Math.min(c[1], card_dict[c[0]].count),
       }));
 
-    if (warning && !confirm(warning + "\n\nContinue importing deck?")) return;
+    if (warning && !confirm(warning + t("import_continue"))) return;
     this.setFaction(deck.faction, true);
-    socket.send(
+    netSend(
       JSON.stringify({ type: "opChangeFaction", faction: deck.faction }),
     );
     if (
@@ -2891,6 +3884,7 @@ class DeckMaker {
       this.leader_elem.children[1].style.backgroundImage = largeURL(
         this.leader.card.deck + "_" + this.leader.card.filename,
       );
+      paintLargeCard(this.leader_elem.children[1], this.leader.card);
     }
     this.makeBank(deck.faction, cards);
     this.update();
@@ -3286,7 +4280,7 @@ function handleKeyDown(event) {
       document.removeEventListener("keyup", handleKeyUp);
       passButton.classList.remove("loading");
       player_me.passRound();
-      socket.send(JSON.stringify({ type: "pass", player: playerId }));
+      netSend(JSON.stringify({ type: "pass", player: playerId }));
     }, 2 * 1000);
     startLoadingEffect();
   }
@@ -3306,4 +4300,72 @@ function startLoadingEffect() {
 
 function stopLoadingEffect() {
   passButton.classList.remove("loading");
+}
+
+function refreshLocalized() {
+  function paint(card) {
+    if (card && typeof card.refreshTexts === "function") card.refreshTexts();
+  }
+  function walk(cont) {
+    if (cont && cont.cards) cont.cards.forEach(paint);
+  }
+  if (board && board.row) board.row.forEach(walk);
+  if (typeof weather !== "undefined") walk(weather);
+  if (player_me) {
+    walk(player_me.hand);
+    walk(player_me.grave);
+    walk(player_me.deck);
+    paint(player_me.leader);
+    document.getElementById("name-me").textContent = displayName(player_me.name);
+    document.getElementById("deck-name-me").textContent = factionField(
+      player_me.deck.faction,
+      "name",
+    );
+  }
+  if (player_op) {
+    walk(player_op.hand);
+    walk(player_op.grave);
+    walk(player_op.deck);
+    paint(player_op.leader);
+    document.getElementById("name-op").textContent = displayName(player_op.name);
+    document.getElementById("deck-name-op").textContent = factionField(
+      player_op.deck.faction,
+      "name",
+    );
+  }
+  if (typeof dm !== "undefined" && dm && dm.faction) {
+    document.querySelector("#faction-title h1").textContent = factionField(
+      dm.faction,
+      "name",
+    );
+    document.getElementById("faction-description").textContent = factionField(
+      dm.faction,
+      "description",
+    );
+  }
+  if (typeof Carousel !== "undefined" && Carousel.curr && Carousel.curr.container) {
+    Carousel.curr.container.cards.forEach(function (card) {
+      paint(card);
+      if (card && card.faction === "faction" && card.abilities && card.abilities[0]) {
+        card.desc_name = factionField(card.abilities[0], "name");
+        card.desc = factionField(card.abilities[0], "description");
+      }
+    });
+    if (Carousel.curr.title && Carousel.curr.title_elem)
+      Carousel.curr.title_elem.innerHTML = t(Carousel.curr.title);
+    if (Carousel.curr.indices && Carousel.curr.indices.length && ui) {
+      var shown =
+        Carousel.curr.container.cards[
+          Carousel.curr.indices[Carousel.curr.index]
+        ];
+      if (shown) ui.setDescription(shown, Carousel.curr.desc);
+    }
+  }
+  if (ui && ui.previewCard && ui.preview && !ui.preview.classList.contains("hide")) {
+    paint(ui.previewCard);
+    ui.setDescription(
+      ui.previewCard,
+      ui.preview.getElementsByClassName("card-description")[0],
+    );
+  }
 }

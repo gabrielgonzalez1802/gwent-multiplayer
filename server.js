@@ -1,8 +1,47 @@
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
 const WebSocket = require("ws");
-const WS_HOST = "localhost";
-const WS_PORT = "8080";
+const WS_HOST = "0.0.0.0";
+const WS_PORT = process.env.PORT || 8080;
+const root = __dirname;
+const fileTypes = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+};
 
-const wss = new WebSocket.Server({ port: WS_PORT, host: WS_HOST });
+const httpServer = http.createServer((req, res) => {
+  let urlPath = decodeURIComponent(req.url.split("?")[0]);
+  if (urlPath === "/") urlPath = "/index.html";
+  const file = path.normalize(path.join(root, urlPath));
+  if (file !== root && !file.startsWith(root + path.sep)) {
+    res.writeHead(403);
+    res.end();
+    return;
+  }
+  fs.readFile(file, (err, data) => {
+    if (err) {
+      res.writeHead(404);
+      res.end("no");
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": fileTypes[path.extname(file)] || "application/octet-stream",
+    });
+    res.end(data);
+  });
+});
+
+const wss = new WebSocket.Server({ server: httpServer });
 
 let sessions = {};
 let players = [];
@@ -22,9 +61,9 @@ function generateCode(length = 4) {
 // Match client's reconnect attempts: 5 attempts * 3000ms = 15000ms; give a small buffer.
 const RECONNECT_WAIT_MS = 20000;
 
-wss.on("listening", () => {
-  const address = wss.address();
-  console.log(`WebSocket server bound to:`, address);
+httpServer.listen(WS_PORT, WS_HOST, () => {
+  console.log("## Server is up and running ##");
+  console.log("http://127.0.0.1:" + WS_PORT);
 });
 
 wss.on("connection", (ws) => {
@@ -247,4 +286,4 @@ wss.on("connection", (ws) => {
   });
 });
 
-console.log(`## Server is up and running ##`);
+console.log("Waiting for the port...");

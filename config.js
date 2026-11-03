@@ -1,1 +1,1 @@
-const CLIENT_CONFIG = "localhost:8080";
+const CLIENT_CONFIG = 'mewnrrrw95.tunnex.org';

@@ -24,19 +24,21 @@ var factions = {
     name: "Monsters",
     factionAbility: (player) =>
       game.roundEnd.push(() => {
-        if (player === player_me) {
+        if (player === player_me || player.controller instanceof ControllerAI) {
           let units = board.row
             .filter((r, i) => (player === player_me) ^ (i < 3))
             .reduce((a, r) => r.cards.filter((c) => c.isUnit()).concat(a), []);
-          if (units.length === 0) return;
+          if (units.length === 0) return false;
 
           let card = units[randomInt(units.length)];
-          socket.send(
-            JSON.stringify({
-              type: "monstersKeepCard",
-              card: removeCircularReferences(card),
-            }),
-          );
+          if (player === player_me) {
+            netSend(
+              JSON.stringify({
+                type: "monstersKeepCard",
+                card: removeCircularReferences(card),
+              }),
+            );
+          }
           card.noRemove = true;
           game.roundStart.push(async () => {
             await ui.notification("monsters", 1200);
@@ -54,14 +56,14 @@ var factions = {
       game.gameStart.push(async () => {
         if (player === player_me) {
           await ui.popup(
-            "Go First",
+            t("go_first"),
             () => (game.firstPlayer = player),
-            "Let Opponent Start",
+            t("let_opponent"),
             () => (game.firstPlayer = player.opponent()),
-            "Would you like to go first?",
-            "The Scoia'tael faction perk allows you to decide who will get to go first.",
+            t("go_first_title"),
+            t("scoiatael_perk"),
           );
-          socket.send(
+          netSend(
             JSON.stringify({
               type: "scoiataelStart",
               first: game.firstPlayer.tag,
@@ -83,16 +85,18 @@ var factions = {
           2,
         );
         console.log("skellige plays the cards:", randomGraveCards);
-        if (player === player_me) {
+        if (player === player_me || player.controller instanceof ControllerAI) {
           await Promise.all(
             randomGraveCards.map((c) => board.toRow(c, player.grave)),
           );
-          socket.send(
-            JSON.stringify({
-              type: "skelligeAbility",
-              cards: removeCircularReferences(randomGraveCards),
-            }),
-          );
+          if (player === player_me) {
+            netSend(
+              JSON.stringify({
+                type: "skelligeAbility",
+                cards: removeCircularReferences(randomGraveCards),
+              }),
+            );
+          }
         }
         return true;
       }),

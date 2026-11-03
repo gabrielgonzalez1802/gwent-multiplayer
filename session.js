@@ -1,15 +1,43 @@
-const websocketAddress = `ws://${CLIENT_CONFIG}`;
+var gameMode = "online";
+let socket = null;
+let activeAddress = null;
+let connecting = false;
+let reconnectTimer = null;
 
-let socket = new WebSocket(websocketAddress);
+function netSend(data) {
+  if (gameMode === "offline") return;
+  if (!socket || socket.readyState !== 1) return;
+  socket.send(data);
+}
+
+function serverCandidates() {
+  const out = [];
+  function add(url) {
+    if (url && out.indexOf(url) === -1) out.push(url);
+  }
+  if (location.protocol === "http:" || location.protocol === "https:") {
+    add((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
+  }
+  add("ws://127.0.0.1:8080");
+  if (typeof CLIENT_CONFIG === "string" && CLIENT_CONFIG)
+    add("wss://" + CLIENT_CONFIG);
+  return out;
+}
+
 const noServerWarningElement = document.getElementById("no-server");
 
 const btnCreateElem = document.getElementById("create-game");
 btnCreateElem.addEventListener("click", () => createGame());
 btnCreateElem.classList.add("disabled");
+btnCreateElem.classList.add("hidden");
 
 const btnJoinElem = document.getElementById("join-game");
 btnJoinElem.addEventListener("click", () => joinGame());
 btnJoinElem.classList.add("disabled");
+btnJoinElem.classList.add("hidden");
+
+const btnOnlineElem = document.getElementById("online-game");
+btnOnlineElem.addEventListener("click", () => ensureOnline());
 
 btnReadyElem = document.getElementById("start-game");
 btnReadyElem.classList.add("hidden");
@@ -31,67 +59,159 @@ sessionIdDiv.classList.add("hidden");
 
 inputGroup.classList.add("hidden");
 
-// Reconnection variables
-let reconnectAttempts = 0;
-const maxReconnectAttempts = 5;
-const reconnectDelay = 3000; // 3 seconds
-let reconnectTimeout = null;
+function showOnlineControls() {
+  btnOnlineElem.classList.add("on");
+  if (!createdSessionId && !joinedSessionId) {
+    btnCreateElem.classList.remove("hidden");
+    btnJoinElem.classList.remove("hidden");
+  }
+}
 
-function reconnectWebSocket() {
-  if (reconnectAttempts >= maxReconnectAttempts) {
-    console.error("Max reconnection attempts reached");
-    noServerWarningElement.classList.remove("hidden");
+function markOnline() {
+  noServerWarningElement.classList.add("hidden");
+  btnCreateElem.classList.remove("disabled");
+  btnJoinElem.classList.remove("disabled");
+  showOnlineControls();
+}
+
+function showServerDown() {
+  noServerWarningElement.classList.remove("hidden");
+}
+
+let createWatch = null;
+
+function showSessionCode(code) {
+  createdSessionId = code;
+  clearTimeout(createWatch);
+  noServerWarningElement.classList.add("hidden");
+  sessionIdDiv.classList.remove("hidden");
+  const label = sessionIdDiv.querySelector(".copy-btn");
+  if (label) label.textContent = t("session") + " " + createdSessionId;
+}
+
+function handleLobbyMessage(event) {
+  let data;
+  try {
+    data = JSON.parse(event.data);
+  } catch (e) {
     return;
   }
+  if (data.type === "sessionCreated") showSessionCode(data.code);
+}
 
-  reconnectAttempts++;
-  console.log(
-    `Attempting to reconnect... (${reconnectAttempts}/${maxReconnectAttempts})`,
-  );
-
-  reconnectTimeout = setTimeout(() => {
-    socket = new WebSocket(websocketAddress);
-    attachSocketListeners();
-  }, reconnectDelay);
+function announce() {
+  if (!socket || socket.readyState !== 1) return;
+  socket.send(JSON.stringify({ type: "connect", id: playerId }));
+  markOnline();
 }
 
 function attachSocketListeners() {
-  socket.onopen = () => {
-    socket.send(
-      JSON.stringify({
-        type: "connect",
-        id: playerId,
-      }),
-    );
-    console.log("Connected to the server");
-    reconnectAttempts = 0;
-    noServerWarningElement.classList.add("hidden");
-    btnCreateElem.classList.remove("disabled");
-    btnJoinElem.classList.remove("disabled");
+  socket.onmessage = (event) => {
+    handleLobbyMessage(event);
+    if (typeof onSocketMessage === "function") onSocketMessage(event);
   };
-
+  socket.onopen = announce;
   socket.onclose = () => {
-    console.log("Disconnected from the server");
-    noServerWarningElement.classList.remove("hidden");
     btnCreateElem.classList.add("disabled");
     btnJoinElem.classList.add("disabled");
-
-    // Attempt to reconnect
-    reconnectWebSocket();
+    showServerDown();
+    if (!activeAddress || reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      openSocket(activeAddress).then((ok) => {
+        if (!ok) showServerDown();
+      });
+    }, 1500);
   };
-
-  socket.onerror = (error) => {
-    console.error("WebSocket error:", error);
-  };
+  socket.onerror = () => {};
 }
 
-// Initial socket listeners
-attachSocketListeners();
+function openSocket(address) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(address);
+    let done = false;
+    const timer = setTimeout(() => fail(), 2500);
+    function fail() {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      try {
+        ws.close();
+      } catch (e) {}
+      resolve(false);
+    }
+    ws.onopen = () => {
+      try {
+        ws.send(
+          JSON.stringify({
+            type: "connect",
+            id: typeof playerId === "undefined" ? null : playerId,
+          }),
+        );
+      } catch (e) {
+        fail();
+      }
+    };
+    ws.onmessage = (event) => {
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch (e) {
+        return;
+      }
+      if (data.type !== "welcome" || done) return;
+      done = true;
+      clearTimeout(timer);
+      if (socket && socket !== ws) {
+        socket.onclose = null;
+        try {
+          socket.close();
+        } catch (e) {}
+      }
+      socket = ws;
+      activeAddress = address;
+      if (data.playerId) playerId = data.playerId;
+      attachSocketListeners();
+      markOnline();
+      resolve(true);
+    };
+    ws.onerror = () => fail();
+    ws.onclose = () => fail();
+  });
+}
+
+async function ensureOnline() {
+  if (socket && socket.readyState === 1) {
+    showOnlineControls();
+    noServerWarningElement.classList.add("hidden");
+    return;
+  }
+  if (connecting) return;
+  connecting = true;
+  btnOnlineElem.classList.add("disabled");
+  noServerWarningElement.classList.add("hidden");
+  let ok = false;
+  for (const address of serverCandidates()) {
+    ok = await openSocket(address);
+    if (ok) break;
+  }
+  connecting = false;
+  btnOnlineElem.classList.remove("disabled");
+  if (!ok) showServerDown();
+}
 
 var createdSessionId = null;
 var joinedSessionId = null;
 
 function createGame() {
+  if (!socket || socket.readyState !== 1) {
+    showServerDown();
+    return;
+  }
   btnReadyElem.classList.add("disabled");
   btnCreateElem.classList.add("hidden");
   btnJoinElem.classList.add("hidden");
@@ -99,6 +219,10 @@ function createGame() {
   btnReadyElem.classList.remove("hidden");
   btnCancelElem.classList.remove("hidden");
   socket.send(JSON.stringify({ type: "createSession" }));
+  clearTimeout(createWatch);
+  createWatch = setTimeout(() => {
+    if (!createdSessionId) showServerDown();
+  }, 3000);
 }
 
 function joinGame() {
@@ -175,7 +299,7 @@ function cancelSession() {
 }
 
 function copySessionId() {
-  var sessionIdText = sessionIdDiv.innerText.slice(9);
+  var sessionIdText = sessionIdDiv.innerText.split(":").pop().trim();
 
   navigator.clipboard
     .writeText(sessionIdText)
@@ -192,15 +316,3 @@ function copySessionId() {
       console.error("Failed to copy text: ", err);
     });
 }
-
-socket.addEventListener("message", (event) => {
-  const data = JSON.parse(event.data);
-
-  if (data.type === "sessionCreated") {
-    createdSessionId = data.code;
-    sessionIdDiv.classList.remove("hidden");
-
-    sessionIdDiv.children[0].innerText = `Session: ${createdSessionId}`;
-    socket.removeEventListener("message", () => {});
-  }
-});

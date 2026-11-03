@@ -129,7 +129,9 @@ var ability_dict = {
 			if (units.length <= 0)
 				return;
 			let wrapper = {card : null};
-			if (card.holder.controller instanceof ControllerOponent) {
+			if (card.holder.controller instanceof ControllerAI) {
+				wrapper.card = card.holder.controller.medic(card, grave);
+			} else if (card.holder.controller instanceof ControllerOponent) {
 				// Wait for the oponent to choose which card to revive
 				wrapper.card = await new Promise((resolve) => {
 					const handleMessage = async (event) => {
@@ -147,7 +149,7 @@ var ability_dict = {
 			} else if (game.randomRespawn) {
 				wrapper.card = grave.findCardsRandom(c => c.isUnit())[0];
 				setTimeout(() => {
-        	socket.send(JSON.stringify({ type: "medicDraw", card: wrapper.card.filename }));
+        	netSend(JSON.stringify({ type: "medicDraw", card: wrapper.card.filename }));
 					// too long? needed to make sure the opponent's websocket waits for this event to avoid breaking
       	}, 3000);
 			} else {
@@ -239,7 +241,7 @@ var ability_dict = {
 	emhyr_emperor: {
 		description: "Look at 3 random cards from your opponent's hand.",
 		activated: async card => {
-			// Wait for the oponent to close the carousel
+			if (card.holder.controller instanceof ControllerAI) return;
 			if (card.holder.controller instanceof ControllerOponent) {
 				await new Promise((resolve) => {
 					const handleMessage = async (event) => {
@@ -272,6 +274,12 @@ var ability_dict = {
 			let grave = board.getRow(card, "grave", card.holder.opponent());
 			if (grave.findCards(c => c.isUnit()).length === 0)
 				return;
+			if (card.holder.controller instanceof ControllerAI) {
+				let newCard = card.holder.controller.medic(card, grave);
+				newCard.holder = card.holder;
+				await board.toHand(newCard, grave);
+				return;
+			}
 			if (card.holder.controller instanceof ControllerOponent) {
 				const newCard = await new Promise((resolve) => {
 					const handleMessage = async (event) => {
@@ -300,7 +308,7 @@ var ability_dict = {
 				newCard.holder.hand.addCardElement(newCard, newCard.holder.hand.cards.length - 1);
 				newCard.holder.hand.resize();
 				setTimeout(() => {
-						socket.send(
+						netSend(
 							JSON.stringify({
 								type: "addCardHandGrave",
 								card: newCard.filename,
@@ -330,7 +338,9 @@ var ability_dict = {
 			}
 			
 			let newCard;
-			if (card.holder.controller instanceof ControllerOponent) {
+			if (card.holder.controller instanceof ControllerAI) {
+				newCard = card.holder.controller.medic(card, card.holder.grave);
+			} else if (card.holder.controller instanceof ControllerOponent) {
 				newCard = await new Promise((resolve) => {
 					const handleMessage = async (event) => {
 						const data = JSON.parse(event.data);
@@ -358,6 +368,12 @@ var ability_dict = {
 		activated: async (card) => {
 			let hand = board.getRow(card, "hand", card.holder);
 			let deck = board.getRow(card, "deck", card.holder);
+			if (card.holder.controller instanceof ControllerAI) {
+				let cards = card.holder.controller.discardOrder(card).splice(0, 2);
+				await Promise.all(cards.map(async (c) => await board.toGrave(c, card.holder.hand)));
+				if (card.holder.deck.cards.length) card.holder.deck.draw(card.holder.hand);
+				return;
+			}
 			if (card.holder.controller instanceof ControllerOponent) {
 				// Wait for the opponent to choose which cards to discard and which to get
 				await new Promise((resolve) => {
@@ -393,7 +409,7 @@ var ability_dict = {
 				card.holder.hand.addCardElement(card, card.holder.hand.cards.length - 1);
 				card.holder.hand.resize();
 				setTimeout(() => {
-					socket.send(
+					netSend(
 						JSON.stringify({
 							type: "addCardHand",
 							index: i,
@@ -414,6 +430,11 @@ var ability_dict = {
 		activated: async card => {
 			let deck = board.getRow(card, "deck", card.holder);
 
+			if (card.holder.controller instanceof ControllerAI) {
+				let pick = ability_dict["eredin_king"].helper(card).card;
+				if (pick) await pick.autoplay(card.holder.deck);
+				return;
+			}
 			// Wait for the opponent to choose which weather card to play
 			if (card.holder.controller instanceof ControllerOponent) {
 				const card = await new Promise((resolve) => {
