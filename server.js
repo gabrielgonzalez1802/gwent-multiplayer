@@ -86,6 +86,71 @@ function pushRules(session, except) {
   });
 }
 
+const TURN_MS = 60000;
+
+function clearMatchTimers(session) {
+  if (!session) return;
+  if (session.turnTimer) clearTimeout(session.turnTimer);
+  if (session.redrawTimer) clearTimeout(session.redrawTimer);
+  session.turnTimer = null;
+  session.redrawTimer = null;
+}
+
+function markRedraw(session, playerId) {
+  if (!session.redrawDone) session.redrawDone = {};
+  if (session.redrawDone[playerId]) return false;
+  session.redrawDone[playerId] = true;
+  return true;
+}
+
+(function () {
+  const sample = {};
+  if (!markRedraw(sample, "a") || markRedraw(sample, "a") || !markRedraw(sample, "b")) throw new Error("redraw");
+})();
+
+function sendStart(session) {
+  if (!session || session.started) return;
+  session.started = true;
+  if (session.redrawTimer) clearTimeout(session.redrawTimer);
+  session.redrawTimer = null;
+  session.players.forEach((player) => {
+    if (player.readyState === 1) player.send(JSON.stringify({ type: "start" }));
+  });
+}
+
+function forceRedraw(session) {
+  if (!session || session.started) return;
+  session.redrawTimer = null;
+  session.players.forEach((player) => {
+    if (!markRedraw(session, player.playerId)) return;
+    if (player.readyState === 1) player.send(JSON.stringify({ type: "redrawTimeout" }));
+  });
+  if (Object.keys(session.redrawDone).length >= 2) sendStart(session);
+}
+
+function beginTurn(session, playerId) {
+  if (!session || !playerId) return;
+  if (session.turnTimer) clearTimeout(session.turnTimer);
+  session.turnPlayer = playerId;
+  session.turnTimer = setTimeout(() => {
+    if (!sessions[session.code] || session.turnPlayer !== playerId) return;
+    session.turnPlayer = null;
+    session.turnTimer = null;
+    const msg = JSON.stringify({ type: "forcedPass", player: playerId });
+    session.players.forEach((player) => {
+      if (player.readyState === 1) player.send(msg);
+    });
+  }, TURN_MS);
+}
+
+function armRedraw(session) {
+  if (!session || session.redrawTimer || session.started) return;
+  session.redrawTimer = setTimeout(() => {
+    if (!sessions[session.code]) return;
+    forceRedraw(session);
+  }, TURN_MS);
+}
+
 function generateCode(length = 4) {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
@@ -195,6 +260,7 @@ wss.on("connection", (ws) => {
       if (!sessions[sessionCode]) return;
 
       console.log(`# Player ${ws.playerId} cancelled Session ${sessionCode}`);
+      clearMatchTimers(sessions[sessionCode]);
       await account.forfeit(sessions[sessionCode], ws.playerId);
       // clear any pending reconnect timers for that session
       Object.keys(disconnectedPlayers).forEach((pid) => {
@@ -275,23 +341,39 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (data.type === "redrawClock" && ws.sessionCode && sessions[ws.sessionCode]) {
+      armRedraw(sessions[ws.sessionCode]);
+      return;
+    }
+
+    if (data.type === "clock" && ws.sessionCode && sessions[ws.sessionCode]) {
+      const session = sessions[ws.sessionCode];
+      const other = session.players.find((player) => player !== ws);
+      const who = data.opp && other ? other.playerId : ws.playerId;
+      if (who && !(session.turnPlayer === who && session.turnTimer)) beginTurn(session, who);
+      return;
+    }
+
     if (data.type === "finished_redraw") {
       if (ws.sessionCode && sessions[ws.sessionCode]) {
         const session = sessions[ws.sessionCode];
-        session.playersReady += 1;
-
-        console.log(
-          `# Players ready in session ${ws.sessionCode}: ${session.playersReady}`,
-        );
-
-        if (session.playersReady === 2) {
-          session.players.forEach((player) => {
-            player.send(JSON.stringify({ type: "start" }));
-          });
-          session.playersReady = 0;
+        if (markRedraw(session, ws.playerId)) {
+          console.log(
+            `# Players ready in session ${ws.sessionCode}: ${Object.keys(session.redrawDone).length}`,
+          );
         }
+        if (Object.keys(session.redrawDone).length >= 2) sendStart(session);
       }
       return;
+    }
+
+    if ((data.type === "play" || data.type === "pass") && ws.sessionCode && sessions[ws.sessionCode]) {
+      const session = sessions[ws.sessionCode];
+      if (session.turnPlayer === ws.playerId) {
+        clearTimeout(session.turnTimer);
+        session.turnTimer = null;
+        session.turnPlayer = null;
+      }
     }
 
     if (data.type === "play" || data.type === "useLeader") account.notePlay(ws, sessions);
@@ -329,6 +411,7 @@ wss.on("connection", (ws) => {
           if (other && other.readyState === WebSocket.OPEN) {
             other.send(JSON.stringify({ type: "sessionDeleted" }));
           }
+          clearMatchTimers(sess);
           console.log(`# Session ${code} deleted due to no reconnection`);
           Object.keys(disconnectedPlayers).forEach((pid) => {
             if (disconnectedPlayers[pid].code === code) {

@@ -141,6 +141,20 @@ async function onSocketMessage(event) {
       player_op.passRound();
       break;
 
+    case "forcedPass":
+      clearTurnClock();
+      if (data.player === playerId) {
+        if (player_me && !player_me.passed) player_me.passRound();
+      } else if (player_op && !player_op.passed) {
+        player_op.passRound();
+      }
+      break;
+
+    case "redrawTimeout":
+      clearTurnClock();
+      if (typeof Carousel !== "undefined" && Carousel.curr) Carousel.curr.exit();
+      break;
+
     // Game - Oponent used the leader card
     case "useLeader":
       player_op.activateLeader();
@@ -310,6 +324,7 @@ class Player {
 
   // Passes the round and ends the turn
   passRound() {
+    clearTurnClock();
     this.setPassed(true);
     this.endTurn();
   }
@@ -337,6 +352,7 @@ class Player {
 
   // Shows a preview of the card being played, plays it to the board and ends the turn
   async playCardAction(card, action) {
+    clearTurnClock();
     ui.showPreviewVisuals(card);
     await sleep(1000);
     ui.hidePreview(card);
@@ -1394,6 +1410,10 @@ class Game {
 
   // Allows the player to swap out up to two cards from their iniitial hand
   async initialRedraw() {
+    if (gameMode === "online") {
+      showTurnClock(true);
+      netSend(JSON.stringify({ type: "redrawClock" }));
+    }
     await ui.queueCarousel(
       player_me.hand,
       2,
@@ -1403,6 +1423,7 @@ class Game {
       true,
       "redraw_hint",
     );
+    clearTurnClock();
     ui.enablePlayer(false);
 
     if (gameMode === "offline") {
@@ -1468,10 +1489,12 @@ class Game {
     }
 
     this.currPlayer.startTurn();
+    armTurnClock();
   }
 
   // Ends the current turn and may end round. Disables client interraction in client's turn.
   async endTurn() {
+    clearTurnClock();
     if (this.currPlayer === player_me) ui.enablePlayer(false);
     await this.runEffects(this.turnEnd);
     if (this.currPlayer.passed)
@@ -1565,6 +1588,7 @@ class Game {
 
   // Returns the client to the deck customization screen
   returnToCustomization() {
+    clearTurnClock();
     if (tutorialOn) endTutorial();
     gameMode = "online";
     netSend(JSON.stringify({ type: "unReady" }));
@@ -4437,6 +4461,40 @@ function cartaNaLinha(id, carta) {
       } else tocar("menu_buy", false);
     } else tocar("hero", false);
   }
+}
+
+var turnClock = null;
+
+function clearTurnClock() {
+  clearInterval(turnClock);
+  turnClock = null;
+  var el = document.getElementById("turn-clock");
+  if (el) el.classList.add("hide");
+}
+
+function showTurnClock(mine) {
+  clearTurnClock();
+  if (gameMode !== "online") return;
+  var left = 60;
+  var el = document.getElementById("turn-clock");
+  if (!el) return;
+  el.classList.remove("hide");
+  el.classList.toggle("mine", !!mine);
+  el.classList.toggle("theirs", !mine);
+  el.textContent = "1:00";
+  turnClock = setInterval(function () {
+    left -= 1;
+    if (left < 0) left = 0;
+    el.textContent = "0:" + (left < 10 ? "0" : "") + left;
+    if (left === 0) clearInterval(turnClock);
+  }, 1000);
+}
+
+function armTurnClock() {
+  showTurnClock(typeof game !== "undefined" && game.currPlayer === player_me);
+  if (gameMode !== "online" || typeof game === "undefined" || !game.currPlayer) return;
+  // ponytail: el numero en pantalla lo lleva cada navegador. El pase al minuto lo manda el servidor. Si los dos relojes se separan un segundo, manda el del servidor.
+  netSend(JSON.stringify(game.currPlayer === player_me ? { type: "clock" } : { type: "clock", opp: true }));
 }
 
 function inicio() {
