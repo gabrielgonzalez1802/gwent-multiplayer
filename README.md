@@ -1,65 +1,93 @@
 # gwent-classic
-[![](https://img.shields.io/badge/Live_Demo-Play_Now!-yellow?&logo=javascript)](https://leo-felde.github.io/gwent-multiplayer/)
+
 ![cover](https://user-images.githubusercontent.com/26311830/116256903-f1599b00-a7b6-11eb-84a1-16dcb5c9bfc6.jpg)
 
-This is a **multiplayer-only** fork using node.js for the server. Although I have not tested it extensevely, the server *should* allow for multiple simultaneous games.
+This repository is a fork of [Leo-Felde/gwent-multiplayer](https://github.com/Leo-Felde/gwent-multiplayer), which is a multiplayer fork of [asundr/gwent-classic](https://github.com/asundr/gwent-classic) by Arun Sundaram. The cards, the classic rules, and the original layout stay. This fork adds local play against the CPU, Spanish, and an optional custom deck mode.
 
-Decoys, Spies, most of the leader's abilities and medics respawning medics respawning whatever seem to all be working properly.
+The page [leo-felde.github.io/gwent-multiplayer](https://leo-felde.github.io/gwent-multiplayer/) belongs to the parent repository. It does not include the changes in this fork. Play this version on your own machine.
 
-### Currently running on this github page
-The node server is runing elsewhere so it might break or might not, it's a free hosting so don't expect much.
-If there is a message "No server connection" please wait a few seconds for it to connect and refresh the page if the issue persists.
-https://leo-felde.github.io/gwent-multiplayer/
+The Node server can still host more than one game at a time. Decoys, spies, most leader abilities, and medics respawning medics respawning whatever remain as they were in the multiplayer fork.
 
-#### Known issues:
-###### feel free to report any bugs or make suggestions.
-<ul>
-  <li>None currently</li>
-</ul>  
+## How to play on this computer
 
-## How to play multiplayer
-Either you or a friend must host the server. I cannot afford to run a public one but there are some very easy options out there such as [Glitch](https://glitch.com), [Fly.io](https://fly.io/docs/js/) and [Render](https://render.com/), you could also host it locally. 
+Install [Node.js](https://nodejs.org/en/download). In the project folder (the one that contains `index.html`) run:
 
-## How to host a server
-If you're just going to connect, skip to "3. Configuring the addresses"
+```
+npm install
+npm start
+```
 
-#### 1. Install dependencies
-This project requires [Node.js](https://nodejs.org/en/download) to run and install dependencies.<br> After having Node.js installed open a command terminal in the project's root (where index.html is located, in windows 11 right clicking should display an option to open in terminal) and run `npm install`
+Then open http://127.0.0.1:8080 . `npm start` serves the page and the websocket on port 8080.
 
-#### 2. Run the server
-Open a command terminal in the project's root and run `node server.js`. After a few seconds you should see a message "## Server is up and running ##", if you don't see this message something went wrong, make sure you have node.js intalled.
+**Offline** plays against the CPU. The server is not required for that match. **Online** plays against another player. The Online button checks that the server answers. If it does not, the page says to run `npm start`. Creating a game shows a session code. The other player joins with that code.
 
-#### 3. Configuring the addresses
-<b>(Host)</b> in `server.js` change the values of `WS_HOST` and `WS_PORT` to the desired server address, normally you should change the address to 0.0.0.0 on a remote host.<br/>
-<b>(Client)</b> in `config.js` change the value of `CLIENT_CONFIG` to the server address. Note that on a remote server you should also change the configuration to segure on the file `session.js` simply change `const websocketAddress = ws://${CLIENT_CONFIG};` to `const websocketAddress = wss://${CLIENT_CONFIG};` (notice and adition "s" in the wss://)
+## CPU
 
-If the connection is successful you should see the options to Create a game or Join a game. Otherwise there should be a warning about "No server connection".
-Creating a game will give you a session ID which should be used to connect clients to the same game.
+The selector next to Offline has six levels: Beginner, Easy, Normal, Hard, Expert, and Madness (Principiante, Fácil, Normal, Difícil, Experto, Demencia).
+
+- Beginner uses a short deck of weak units, with no heroes, spies, or weather, and plays at random.
+- Easy uses a slightly larger deck, at most one hero, and no spies.
+- Normal is the premade opponent from the original game.
+- Hard, Expert, and Madness bring a stronger deck and pick the better move more often. Madness uses the strongest deck that faction is allowed to field.
+
+Online ignores this selector. If Custom is on, the CPU deck also follows those limits.
+
+## Custom rules and random deck
+
+Classic mode is unchanged: at least 22 unit cards and at most 10 special cards. Weather cards count toward that 10. There is no cap on heroes, spies, strength, or deck size.
+
+Custom is a separate switch. It can set a minimum and maximum of units, a maximum deck size, specials, weather on or off and a weather maximum, heroes, spies, and total strength. A blank number means that cap is not used.
+
+Random deck builds a deck for the current faction inside whichever limits are active, classic or custom. The leader stays in that faction. If the limits cannot be met, the message says what that faction would need. Empty deck sends every card back to the collection and does not change the leader.
+
+Against the CPU, both decks follow the active limits. Online, each player checks their own deck with their own Custom switch. Those limits are not sent with the session code.
+
+## Language
+
+English is the default. The ES button switches to Spanish, and the choice is saved in the browser. Large cards show the Spanish name and the ability text over the picture. Small cards on the board keep the name painted on the art. Each player can use a different language. The Rules window and the player aid (Aid / Chuleta) follow the same choice and describe this game.
 
 ## Rules
-The game is played in the same way as the original. The player aims to win two of three rounds, where victory within a given round is determined by whoever scores the most points. 
 
-#### Cards and Points
-Points are obtained by placing down unit cards, each with their corresponding values. Some unit cards have special effects as denoted by a symbol on their left side. The cards and their effects can be examined by selecting them or the row they have been palced on. The game also includes a nubmer of special cards that apply effects like negative weather conditions or bosting card points when played.
+The game is played in the same way as the original. The player aims to win two of three rounds. The higher strength wins the round.
 
-#### Turns
-A turn consists of playing a single card. Your opponent then does the same until either one of you passes. At this point the remaining player can continue to place cards until they decide to pass. When both players have passed the round is ended. In addition of placing cards, they player may also activate their leader ability by clicking on their leader if it is available to them.
+### Cards and points
 
-#### Factions
-The faction you pick will affect your game in three ways. It limits the specific cards you can use to neutral cards, special cards, and the unit cards in your faction. This includes the leader card that you can pick and the corresponding leader ability. Each faction also has a special effect that is displayed when selecting a faction and at the top of the customization screen for the currently selected faction.
+Points come from unit cards. Some units have an ability, shown by the symbol on the left. Cards and rows can be inspected in the game. Special cards apply weather, Scorch, Commander's Horn, Decoy, and the other effects from the original minigame.
+
+### Turns
+
+A turn is one card, or a pass. The opponent then plays until one player passes. The other may keep playing until they pass too. When both have passed, the round ends. A leader ability can be used once from the leader slot when it is available.
+
+### Factions
+
+The faction limits the unit cards, the neutral and special cards, and the leader. Each faction also has its own effect, shown when the faction is selected and at the top of the deck screen.
 
 ## Features
-#### All cards from the TW3 + DLC
-All cards from the base games and DLC can be used by you and the AI. This includes the additions from Hearts of Stone and Skellige as a playable deck from Blood and Wine. The total count of cards available corresponds to the number you can find in the original game.
 
-#### Faithful to the original minigame
-This remake aims to resemble the orignal minigame as closely as possible from the font to the UI layout and notifications. Some changes have been made in the form of buttons to toggle the music and pass your current turn. The deck customization screen also includes buttons to upload and download decks.
+### All cards from The Witcher 3 and its expansions
 
-#### AI opponent
-AI has been completely disabled in this fork. To play against AI use the [original project](https://github.com/asundr/gwent-classic).
+All cards from the base game, Hearts of Stone, and Blood and Wine can be used, including Skellige. The CPU uses the same card pool. The count matches the original minigame.
 
-#### Customize, save and upload decks
-You can select a faction to play as at the top of the screen and then add and remove cards from your deck by clicking on the cards in either scroll-down menu. You can also pick a leader card by selecting the current leader and scrolling through the options for that faction. At the top of the screen there are buttons to upload and download decks to play with. These are stored in json format and are checked to see if they comply with their assigned faction and maximum card counts.
+### Faithful to the original minigame
 
-#### Music tracks
-Besides The gwent music tracks streamed from YouTube togglable by pressing the music icon in the center of the customization screen or the bottom-left of the game screen, There are also **general sound effects** related to cards and their effects which were taken from [RandomPianist's fork](https://github.com/RandomPianist).
+The remake keeps the original font, layout, and notifications. Extra controls are the music toggle, the pass button, the language button, Rules, and the player aid. The deck screen can load a deck, save it, change faction, build a random deck, and empty the deck.
+
+### Customize, save, and upload decks
+
+Pick a faction at the top, then click cards to move them between the collection and the deck. The leader is chosen from the leaders of that faction. Saved decks are JSON and are checked against the faction and the active card limits.
+
+### Music
+
+The Gwent tracks still stream from YouTube. The music icon is in the center of the deck screen and at the bottom left during a match. Card sound effects come from [RandomPianist's fork](https://github.com/RandomPianist).
+
+## How to host a server
+
+Local play does not need a config change. The server listens on `0.0.0.0` and on `PORT`, or 8080 if `PORT` is not set, and it serves this folder. Opening the page from that server makes Online use the same address.
+
+To put it on a remote host, [Glitch](https://glitch.com), [Fly.io](https://fly.io/docs/js/), and [Render](https://render.com/) still work. Set `PORT` if the host requires it. `config.js` holds `CLIENT_CONFIG`, a fallback `wss://` address used only when the page cannot reach a local server. The old edit in `session.js` that switched `ws://` to `wss://` is no longer needed.
+
+A successful online connection shows the session code after Create Game. If nothing is listening, the page says the server is not running.
+
+## Known issues
+
+Bugs and suggestions are welcome. Open an issue on this fork.
