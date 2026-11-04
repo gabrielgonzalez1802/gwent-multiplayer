@@ -201,6 +201,7 @@ class ControllerAI {
 				row = board.row[i];
 			}
 		}
+		if (!row) { await this.player.passRound(); return; }
 		await this.player.playCardToRow(card, row);
 	}
 	
@@ -237,17 +238,21 @@ class ControllerAI {
 			let pairs = max.rmax.filter((r,i) => i<3 && r.cards.length).reduce((a,r) => 
 				r.cards.map(c => ({r:r.row, c:c})).concat(a)
 			, []);
+			if (!pairs.length) { await this.player.passRound(); return; }
 			let pair = pairs[randomInt(pairs.length)];
 			targ = pair.c;
 			row = pair.r;
 		}
-		
-		for (let i = 0; !row ; ++i){
-			if (board.row[i].cards.indexOf(targ) !== -1){
-				row = board.row[i];
-				break;
+		if (!targ) { await this.player.passRound(); return; }
+		if (!row) {
+			for (let i = 0; i < board.row.length; ++i) {
+				if (board.row[i].cards.indexOf(targ) !== -1) {
+					row = board.row[i];
+					break;
+				}
 			}
 		}
+		if (!row) { await this.player.passRound(); return; }
 		
 		setTimeout(() => board.toHand(targ, row), 1000);
 		await this.player.playCardToRow(card, row);

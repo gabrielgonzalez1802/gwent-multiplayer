@@ -323,7 +323,13 @@ class Player {
     }
 
     if (this.controller instanceof ControllerAI) {
-      await this.controller.startTurn(this);
+      try {
+        await this.controller.startTurn(this);
+      } catch (err) {
+        // ponytail: a bad CPU play used to reject the turn and leave the board locked. Passing hands it back. The upgrade is to reject illegal plays before they start.
+        console.error(err);
+        if (game.currPlayer === this && !this.passed) this.passRound();
+      }
     }
   }
 
@@ -1483,35 +1489,54 @@ class Game {
 
   // Starts a new turn. Enables client interraction in client's turn.
   async startTurn() {
-    await this.runEffects(this.turnStart);
-    if (!this.currPlayer.opponent().passed) {
-      this.currPlayer = this.currPlayer.opponent();
-      ui.notification(this.currPlayer.tag + "-turn", 1200);
-    }
-    if (this.currPlayer === player_me) {
-      passButton.classList.remove("hidden");
-      document.addEventListener("keydown", handleKeyDown);
-      document.addEventListener("keyup", handleKeyUp);
-      ui.enablePlayer(true);
-    } else {
-      passButton.classList.add("hidden");
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("keyup", handleKeyUp);
-    }
+    try {
+      await this.runEffects(this.turnStart);
+      if (!this.currPlayer.opponent().passed) {
+        this.currPlayer = this.currPlayer.opponent();
+        ui.notification(this.currPlayer.tag + "-turn", 1200);
+      }
+      if (this.currPlayer === player_me) {
+        passButton.classList.remove("hidden");
+        document.addEventListener("keydown", handleKeyDown);
+        document.addEventListener("keyup", handleKeyUp);
+        ui.enablePlayer(true);
+      } else {
+        passButton.classList.add("hidden");
+        document.removeEventListener("keydown", handleKeyDown);
+        document.removeEventListener("keyup", handleKeyUp);
+      }
 
-    this.currPlayer.startTurn();
-    armTurnClock();
+      this.currPlayer.startTurn();
+      armTurnClock();
+    } catch (err) {
+      console.error(err);
+      this.giveTurnBack();
+    }
   }
 
   // Ends the current turn and may end round. Disables client interraction in client's turn.
   async endTurn() {
-    clearTurnClock();
-    if (this.currPlayer === player_me) ui.enablePlayer(false);
-    await this.runEffects(this.turnEnd);
-    if (this.currPlayer.passed)
-      await ui.notification(this.currPlayer.tag + "-pass", 1200);
-    if (player_op.passed && player_me.passed) this.endRound();
-    else this.startTurn();
+    try {
+      clearTurnClock();
+      if (this.currPlayer === player_me) ui.enablePlayer(false);
+      await this.runEffects(this.turnEnd);
+      if (this.currPlayer.passed)
+        await ui.notification(this.currPlayer.tag + "-pass", 1200);
+      if (player_op.passed && player_me.passed) this.endRound();
+      else this.startTurn();
+    } catch (err) {
+      console.error(err);
+      this.giveTurnBack();
+    }
+  }
+
+  giveTurnBack() {
+    if (!player_me || (this.endScreen && !this.endScreen.classList.contains("hide"))) return;
+    this.currPlayer = player_me;
+    passButton.classList.remove("hidden");
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+    ui.enablePlayer(true);
   }
 
   // Ends the round and may end the game. Determines final scores and the round winner.
