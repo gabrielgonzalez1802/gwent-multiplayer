@@ -1301,6 +1301,8 @@ class Game {
     if (tutorialOn && tutorialPhase !== "match") endTutorial();
     gameStartControlsElem.classList.add("hide");
     document.getElementById("lobby-bar").classList.add("hide");
+    document.getElementById("top-menu").classList.add("hide");
+    closeMenus();
     var accountBar = document.getElementById("account-bar");
     var betPanel = document.getElementById("bet-panel");
     if (accountBar) accountBar.classList.add("hide");
@@ -1611,6 +1613,7 @@ class Game {
     customizationElem.classList.remove("hide");
     gameStartControlsElem.classList.remove("hide");
     document.getElementById("lobby-bar").classList.remove("hide");
+    document.getElementById("top-menu").classList.remove("hide");
     var accountBar = document.getElementById("account-bar");
     if (accountBar) accountBar.classList.remove("hide");
     if (typeof syncOwnedDeck === "function") syncOwnedDeck();
@@ -2435,6 +2438,7 @@ class Carousel {
     this.elem.classList.remove("hide");
     ui.enablePlayer(true);
     tocar("explaining", false);
+    if (typeof onTutorialCarousel === "function") onTutorialCarousel();
   }
 
   // Called by the client to cycle cards displayed by n
@@ -4508,6 +4512,8 @@ function armTurnClock() {
 function inicio() {
   var classe = document.getElementsByClassName("abs");
   for (var i = 0; i < classe.length; i++) classe[i].style.display = "none";
+  document.getElementById("top-menu").classList.remove("hide");
+  document.getElementById("top-tools").classList.remove("hide");
   iniciou = true;
   tocar("menu_opening", false);
 }
@@ -4791,7 +4797,7 @@ var TUTORIAL_DECK = [
   { target: "card-leader", key: "tut_leader" },
   { target: "deck-stats", key: "tut_limits" },
   { target: "cpu-level", key: "tut_cpu" },
-  { target: "tutorial-game", key: "tut_choice", choice: true },
+  { target: "offline-game", key: "tut_choice", choice: true },
 ];
 var TUTORIAL_MATCH = [
   { target: "carousel", key: "tut_redraw" },
@@ -4885,6 +4891,7 @@ function renderTutorial() {
   panel.classList.toggle("match", tutorialPhase === "match");
   panel.classList.remove("hide");
   document.getElementById("tutorial-game").classList.add("on");
+  openMenuFor(target);
 }
 
 function endTutorial() {
@@ -4895,6 +4902,7 @@ function endTutorial() {
   clearTutorialTarget();
   document.getElementById("tutorial-panel").classList.add("hide");
   document.getElementById("tutorial-game").classList.remove("on");
+  closeMenus();
   if (tutorialCpuPrev) {
     cpuLevel = tutorialCpuPrev;
     document.getElementById("cpu-level").value = tutorialCpuPrev;
@@ -4914,11 +4922,41 @@ function startTutorial() {
   renderTutorial();
 }
 
+function showTutorialWait() {
+  clearTutorialTarget();
+  var panel = document.getElementById("tutorial-panel");
+  panel.classList.add("match");
+  panel.classList.remove("hide");
+  document.getElementById("tutorial-text").textContent = t("tut_wait");
+  document.getElementById("tutorial-next").classList.add("hide");
+  document.getElementById("tutorial-back").classList.add("hide");
+  document.getElementById("tutorial-play").classList.add("hide");
+}
+
+function onTutorialCarousel() {
+  if (!tutorialOn || tutorialPhase !== "match" || tutorialLive) return;
+  if (!Carousel.curr || Carousel.curr.title !== "redraw_hint") return;
+  tutorialStep = 0;
+  renderTutorial();
+  document.getElementById("tutorial-next").classList.add("hide");
+  document.getElementById("tutorial-back").classList.add("hide");
+  document.getElementById("tutorial-play").classList.add("hide");
+}
+
+function onTutorialAfterRedraw() {
+  if (!tutorialOn || tutorialPhase !== "match" || tutorialLive) return;
+  if (tutorialStep !== 0) return;
+  tutorialStep = 1;
+  renderTutorial();
+}
+
 function startTutorialMatch() {
   tutorialCpuPrev = cpuLevel;
   cpuLevel = "principiante";
   document.getElementById("cpu-level").value = "principiante";
   tutorialPhase = "match";
+  tutorialLive = false;
+  tutorialStep = 0;
   dm.startOffline();
   if (gameMode !== "offline") {
     tutorialPhase = "deck";
@@ -4928,8 +4966,7 @@ function startTutorialMatch() {
     renderTutorial();
     return;
   }
-  tutorialStep = 0;
-  renderTutorial();
+  showTutorialWait();
 }
 
 (function checkTutorial() {
@@ -5011,6 +5048,32 @@ function refreshLocalized() {
   if (tutorialOn) renderTutorial();
 }
 
+function closeMenus(except) {
+  var drops = document.querySelectorAll("#top-menu .menu-drop.open");
+  for (var i = 0; i < drops.length; i++) {
+    if (drops[i] !== except) drops[i].classList.remove("open");
+  }
+}
+
+function openMenuFor(el) {
+  var drop = el && el.closest ? el.closest(".menu-drop") : null;
+  closeMenus(drop);
+  if (drop) drop.classList.add("open");
+}
+
+document.querySelectorAll("#top-menu .menu-drop-btn").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var drop = btn.parentElement;
+    var was = drop.classList.contains("open");
+    closeMenus();
+    if (!was) drop.classList.add("open");
+  });
+});
+document.addEventListener("click", function (event) {
+  if (event.target.closest && event.target.closest("#top-menu, #tutorial-panel")) return;
+  closeMenus();
+});
+
 document.getElementById("tutorial-game").addEventListener("click", startTutorial);
 document.getElementById("tutorial-close").addEventListener("click", endTutorial);
 document.getElementById("tutorial-back").addEventListener("click", function () {
@@ -5018,6 +5081,10 @@ document.getElementById("tutorial-back").addEventListener("click", function () {
   renderTutorial();
 });
 document.getElementById("tutorial-next").addEventListener("click", function () {
+  if (tutorialPhase === "match" && tutorialStep >= tutorialSteps().length - 1) {
+    enterTutorialLive();
+    return;
+  }
   if (tutorialStep >= tutorialSteps().length - 1) {
     endTutorial();
     return;

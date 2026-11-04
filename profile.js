@@ -176,6 +176,7 @@ function renderBet() {
     return;
   }
   panel.classList.remove("hide");
+  if (typeof closeMenus === "function") closeMenus();
   var controls = document.getElementById("bet-controls");
   var mine = betState.players.find(function (player) { return player.playerId === playerId; });
   var theirs = betState.players.find(function (player) { return player.playerId !== playerId; });
@@ -482,25 +483,11 @@ document.getElementById("bet-ok").addEventListener("click", function () {
 
 function placeAccount() {
   var bar = document.getElementById("account-bar");
-  var lobby = document.getElementById("lobby-bar");
-  var aid = document.getElementById("aid-open");
-  if (!bar || !lobby || !aid || bar.classList.contains("hide")) return;
-  bar.style.width = "auto";
-  var need = bar.scrollWidth;
-  var leftEdge = lobby.getBoundingClientRect().right + 8;
-  var rightEdge = aid.getBoundingClientRect().left - 8;
-  var gap = rightEdge - leftEdge;
-  if (!lobby.classList.contains("hide") && gap < need) {
-    bar.style.top = lobby.getBoundingClientRect().bottom + 8 + "px";
-    bar.style.left = "12px";
-    bar.style.width = "auto";
-    bar.style.transform = "none";
-    return;
-  }
-  bar.style.top = "12px";
-  bar.style.left = Math.max(8, leftEdge) + "px";
-  bar.style.width = Math.max(gap, 0) + "px";
-  bar.style.transform = "none";
+  if (!bar) return;
+  bar.style.top = "";
+  bar.style.left = "";
+  bar.style.width = "";
+  bar.style.transform = "";
 }
 
 window.addEventListener("resize", placeAccount);

@@ -171,6 +171,10 @@ html {
 	z-index: 86;
 }
 
+#top-tools.hide {
+	display: none;
+}
+
 #top-tools {
 	position: fixed;
 	top: 12px;
@@ -2550,23 +2554,116 @@ body.lang-es #notif-zerrikania::after {
 	background-image: url(img/icons/deck_stats_special.png);
 }
 
-#lobby-bar {
+#top-menu {
 	position: fixed;
-	z-index: 88;
+	z-index: 4000;
 	top: 12px;
 	left: 12px;
 	display: flex;
-	flex-direction: row;
-	flex-wrap: wrap;
-	align-items: center;
+	align-items: flex-start;
 	gap: 8px;
-	width: max-content;
-	max-width: calc(100vw - 240px);
+}
+
+#top-menu.hide {
+	display: none;
+}
+
+.menu-drop {
+	position: relative;
+}
+
+.menu-drop-btn {
+	height: 32px;
+	padding: 0 12px;
+	font-size: 14px;
+	color: #f2e6c8;
+	background: rgb(20, 20, 20);
+	border: 1px solid rgba(196, 165, 116, 0.7);
+	box-shadow: 0 3px 5px rgba(0, 0, 0, 0.4);
+	cursor: pointer;
+}
+
+.menu-drop-btn::after {
+	content: "";
+	display: inline-block;
+	margin-left: 8px;
+	border-left: 4px solid transparent;
+	border-right: 4px solid transparent;
+	border-top: 5px solid currentColor;
+	vertical-align: 2px;
+}
+
+.menu-drop.open > .menu-drop-btn {
+	color: goldenrod;
+	border-color: goldenrod;
+}
+
+#top-menu .menu-panel {
+	display: none;
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	z-index: 1;
+	box-sizing: border-box;
+	min-width: 240px;
+	max-width: min(420px, calc(100vw - 24px));
+	padding: 8px;
+	background: rgba(8, 8, 8, 0.96);
+	border: 1px solid rgba(196, 165, 116, 0.55);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+#top-menu .menu-drop.open > .menu-panel {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
 }
 
 #lobby-bar.hide,
 #account-bar.hide {
 	display: none;
+}
+
+.menu-panel > button,
+.menu-panel > select,
+#account-in > input,
+#account-in > select,
+#account-in > button,
+#account-out > button {
+	width: 100%;
+	max-width: none;
+	box-sizing: border-box;
+}
+
+#account-in,
+#account-out {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
+}
+
+#account-in.hide,
+#account-out.hide {
+	display: none;
+}
+
+#account-who {
+	font-size: 14px;
+	color: #f2e6c8;
+}
+
+#account-bar button,
+#account-bar select,
+#account-bar input {
+	height: 32px;
+	padding: 0 12px;
+	font-size: 14px;
+	color: #eee;
+	background: rgb(20, 20, 20);
+	border: 0.1vw ridge rgb(30, 30, 30);
 }
 
 #bet-panel,
@@ -2581,28 +2678,6 @@ body.lang-es #notif-zerrikania::after {
 	border: 1px solid goldenrod;
 }
 
-#account-bar {
-	position: fixed;
-	z-index: 90;
-	top: 12px;
-	left: 50%;
-	transform: translateX(-50%);
-	display: flex;
-	flex-wrap: nowrap;
-	justify-content: center;
-	gap: 8px;
-	align-items: center;
-	height: 32px;
-	font-size: 14px;
-	line-height: 1.35;
-	color: #eee;
-	white-space: nowrap;
-}
-
-#account-bar input,
-#account-bar select,
-#bet-panel select,
-#account-bar button,
 #bet-panel button {
 	height: 32px;
 	padding: 0 8px;
@@ -2612,15 +2687,14 @@ body.lang-es #notif-zerrikania::after {
 	border: 1px solid rgb(90, 70, 30);
 }
 
-#account-bar input {
-	width: 104px;
-}
-
 #bet-panel {
-	top: 64px;
-	left: 12px;
-	width: min(420px, calc(100vw - 24px));
+	top: auto;
+	bottom: 18px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(480px, calc(100vw - 24px));
 	padding: 10px 12px;
+	z-index: 4100;
 }
 
 #bet-panel p,
@@ -2666,15 +2740,21 @@ body.lang-es #notif-zerrikania::after {
 }
 
 #tutorial-panel.match {
-	top: 52px;
+	top: 64px;
 	bottom: auto;
-	z-index: 6000;
+	left: 12px;
+	transform: none;
+	width: min(360px, calc(100vw - 240px));
+	z-index: 95;
+	pointer-events: none;
 }
 
 #tutorial-panel p {
-	margin: 0 0 12px;
-	font-size: 16px;
-	line-height: 1.35;
+	margin: 0 0 10px;
+}
+
+#tutorial-panel.match button {
+	pointer-events: auto;
 }
 
 #tutorial-panel div {
@@ -2725,7 +2805,7 @@ body.lang-es #notif-zerrikania::after {
 
 #cpu-level {
 	height: 32px;
-	max-width: 150px;
+	max-width: none;
 	padding: 0 8px;
 	font-size: 14px;
 	color: #eee;
@@ -2734,17 +2814,13 @@ body.lang-es #notif-zerrikania::after {
 }
 
 #custom-panel {
-	position: fixed;
-	top: 52px;
-	left: 12px;
-	z-index: 89;
+	position: static;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	width: 280px;
-	padding: 10px;
-	background: rgba(0, 0, 0, 0.92);
-	border: 1px solid goldenrod;
+	padding: 0;
+	background: transparent;
+	border: 0;
 	font-size: 14px;
 	color: #ddd;
 }

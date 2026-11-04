@@ -287,70 +287,81 @@
       </div>
     </section>
 
-    <div id="lobby-bar">
-      <div id="no-server" class="hidden">
-        <div id="no-server-icon"></div>
-        <span data-i18n="no_server">Server is not running. Run npm start</span>
-      </div>
-      <button id="offline-game" type="button" data-i18n="offline_play">Offline</button>
-      <button id="tutorial-game" type="button" data-i18n="tut_btn">Tutorial</button>
-      <select id="cpu-level" aria-label="CPU">
-        <option value="principiante" data-i18n="cpu_principiante">Beginner</option>
-        <option value="facil" data-i18n="cpu_facil">Easy</option>
-        <option value="normal" data-i18n="cpu_normal" selected>Normal</option>
-        <option value="dificil" data-i18n="cpu_dificil">Hard</option>
-        <option value="experto" data-i18n="cpu_experto">Expert</option>
-        <option value="demencia" data-i18n="cpu_demencia">Madness</option>
-      </select>
-      <button id="online-game" type="button" data-i18n="online_play">Online</button>
-      <button id="custom-mode" type="button" data-i18n="custom_mode">Custom</button>
-      <div id="custom-panel" class="hide">
-        <label><span data-i18n="rule_units">Min. units</span><input id="rule-units" type="number" min="0" max="60" value="22"></label>
-        <label><span data-i18n="rule_units_max">Max. units</span><input id="rule-units-max" type="number" min="0" max="60" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-        <label><span data-i18n="rule_deck">Max. cards</span><input id="rule-deck" type="number" min="0" max="80" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-        <label><span data-i18n="rule_special">Max. specials</span><input id="rule-special" type="number" min="0" max="20" value="10"></label>
-        <label><span data-i18n="rule_weather">Weather</span><select id="rule-weather"><option value="yes" data-i18n="yes">Yes</option><option value="no" data-i18n="no">No</option></select></label>
-        <label id="rule-weather-max-row"><span data-i18n="rule_weather_max">Max. weather</span><input id="rule-weather-max" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-        <label><span data-i18n="rule_heroes">Max. heroes</span><input id="rule-heroes" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-        <label><span data-i18n="rule_spies">Max. spies</span><input id="rule-spies" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-        <label><span data-i18n="rule_strength">Max. strength</span><input id="rule-strength" type="number" min="0" max="400" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-        <button id="rule-reset" type="button" data-i18n="rule_reset">Classic limits</button>
-      </div>
-      <button id="create-game" class="hidden" data-i18n="create_game">Create Game</button>
-      <button id="join-game" class="hidden" data-i18n="join_game">Join Game</button>
-      <span id="join-input">
-        <label for="session-input" data-i18n="session_code">Session code</label>
-        <input
-          type="text"
-          id="session-input"
-          maxlength="4"
-          name="session-input"
-          autocapitalize="characters"
-          spellcheck="false"
-        />
-      </span>
-      <button id="confirm-join" data-i18n="join">Join</button>
-      <div id="session-start-control">
-        <button id="start-game" data-i18n="ready">Ready</button>
-        <button id="cancel-game" data-i18n="cancel">Cancel</button>
-        <div id="session-id">
-          <button class="copy-btn" data-i18n="session">Session:</button>
-          <span class="tooltip" id="tooltip" data-i18n="copied">Copied to clipboard</span>
+    <div id="top-menu" class="hide">
+      <div class="menu-drop">
+        <button type="button" class="menu-drop-btn" data-i18n="menu_play">Play</button>
+        <div class="menu-panel">
+          <button id="offline-game" type="button" data-i18n="offline_play">Offline</button>
+          <button id="tutorial-game" type="button" data-i18n="tut_btn">Tutorial</button>
+          <select id="cpu-level" aria-label="CPU">
+            <option value="principiante" data-i18n="cpu_principiante">Beginner</option>
+            <option value="facil" data-i18n="cpu_facil">Easy</option>
+            <option value="normal" data-i18n="cpu_normal" selected>Normal</option>
+            <option value="dificil" data-i18n="cpu_dificil">Hard</option>
+            <option value="experto" data-i18n="cpu_experto">Expert</option>
+            <option value="demencia" data-i18n="cpu_demencia">Madness</option>
+          </select>
         </div>
       </div>
-    </div>
-    <div id="account-bar">
-      <div id="account-in">
-        <input id="account-name" maxlength="16" autocomplete="username" data-i18n-placeholder="acc_name" placeholder="Name" />
-        <input id="account-pass" type="password" maxlength="64" autocomplete="current-password" data-i18n-placeholder="acc_pass" placeholder="Password" />
-        <select id="account-faction" aria-label="Faction"></select>
-        <button id="account-register" type="button" data-i18n="acc_register">Create account</button>
-        <button id="account-login" type="button" data-i18n="acc_login">Log in</button>
+      <div class="menu-drop">
+        <button type="button" class="menu-drop-btn" data-i18n="menu_online">Online</button>
+        <div id="lobby-bar" class="menu-panel">
+          <div id="no-server" class="hidden">
+            <div id="no-server-icon"></div>
+            <span data-i18n="no_server">Server is not running. Run npm start</span>
+          </div>
+          <button id="online-game" type="button" data-i18n="online_play">Online</button>
+          <button id="create-game" class="hidden" data-i18n="create_game">Create Game</button>
+          <button id="join-game" class="hidden" data-i18n="join_game">Join Game</button>
+          <span id="join-input">
+            <label for="session-input" data-i18n="session_code">Session code</label>
+            <input type="text" id="session-input" maxlength="4" name="session-input" autocapitalize="characters" spellcheck="false" />
+          </span>
+          <button id="confirm-join" data-i18n="join">Join</button>
+          <div id="session-start-control">
+            <button id="start-game" data-i18n="ready">Ready</button>
+            <button id="cancel-game" data-i18n="cancel">Cancel</button>
+            <div id="session-id">
+              <button class="copy-btn" data-i18n="session">Session:</button>
+              <span class="tooltip" id="tooltip" data-i18n="copied">Copied to clipboard</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div id="account-out" class="hide">
-        <span id="account-who"></span>
-        <button id="account-open" type="button">Open pack (0)</button>
-        <button id="account-logout" type="button" data-i18n="acc_logout">Log out</button>
+      <div class="menu-drop">
+        <button type="button" class="menu-drop-btn" data-i18n="menu_limits">Limits</button>
+        <div class="menu-panel">
+          <button id="custom-mode" type="button" data-i18n="custom_mode">Custom</button>
+          <div id="custom-panel" class="hide">
+            <label><span data-i18n="rule_units">Min. units</span><input id="rule-units" type="number" min="0" max="60" value="22"></label>
+            <label><span data-i18n="rule_units_max">Max. units</span><input id="rule-units-max" type="number" min="0" max="60" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
+            <label><span data-i18n="rule_deck">Max. cards</span><input id="rule-deck" type="number" min="0" max="80" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
+            <label><span data-i18n="rule_special">Max. specials</span><input id="rule-special" type="number" min="0" max="20" value="10"></label>
+            <label><span data-i18n="rule_weather">Weather</span><select id="rule-weather"><option value="yes" data-i18n="yes">Yes</option><option value="no" data-i18n="no">No</option></select></label>
+            <label id="rule-weather-max-row"><span data-i18n="rule_weather_max">Max. weather</span><input id="rule-weather-max" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
+            <label><span data-i18n="rule_heroes">Max. heroes</span><input id="rule-heroes" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
+            <label><span data-i18n="rule_spies">Max. spies</span><input id="rule-spies" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
+            <label><span data-i18n="rule_strength">Max. strength</span><input id="rule-strength" type="number" min="0" max="400" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
+            <button id="rule-reset" type="button" data-i18n="rule_reset">Classic limits</button>
+          </div>
+        </div>
+      </div>
+      <div class="menu-drop">
+        <button type="button" class="menu-drop-btn" data-i18n="menu_account">Account</button>
+        <div id="account-bar" class="menu-panel">
+          <div id="account-in">
+            <input id="account-name" maxlength="16" autocomplete="username" data-i18n-placeholder="acc_name" placeholder="Name" />
+            <input id="account-pass" type="password" maxlength="64" autocomplete="current-password" data-i18n-placeholder="acc_pass" placeholder="Password" />
+            <select id="account-faction" aria-label="Faction"></select>
+            <button id="account-register" type="button" data-i18n="acc_register">Create account</button>
+            <button id="account-login" type="button" data-i18n="acc_login">Log in</button>
+          </div>
+          <div id="account-out" class="hide">
+            <span id="account-who"></span>
+            <button id="account-open" type="button">Open pack (0)</button>
+            <button id="account-logout" type="button" data-i18n="acc_logout">Log out</button>
+          </div>
+        </div>
       </div>
     </div>
     <p id="reward-note" class="hide"></p>
@@ -408,7 +419,7 @@
     <script type="text/javascript" src="factions.js"></script>
     <script type="text/javascript" src="config.js"></script>
     <script type="text/javascript" src="session.js"></script>
-    <div id="top-tools">
+    <div id="top-tools" class="hide">
       <div id="turn-clock" class="hide">1:00</div>
       <button id="aid-open" type="button" data-i18n="aid_btn">Aid</button>
       <button id="rules-open" type="button" data-i18n="rules_btn">Rules</button>
