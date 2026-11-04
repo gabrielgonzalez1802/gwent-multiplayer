@@ -250,6 +250,52 @@ function betStampOf(state) {
   return state.players.map(function (player) { return (player.cards || []).join(","); }).join("|") + (state.locked ? ":1" : ":0");
 }
 
+function betLook(raw) {
+  if (!raw || typeof ui === "undefined") return;
+  var abilities = String(raw.ability || "").split(" ").filter(Boolean);
+  var hero = abilities[0] === "hero";
+  if (hero) abilities = abilities.slice(1);
+  var row = raw.deck === "weather" ? "weather" : raw.row;
+  var desc = row === "agile" ? abField("agile", "description") : "";
+  abilities.forEach(function (item) { desc += abField(item, "description"); });
+  if (hero) desc += abField("hero", "description");
+  ui.showPreviewVisuals({
+    filename: raw.filename,
+    faction: raw.deck,
+    name: raw.name,
+    row: row,
+    hero: hero,
+    abilities: abilities,
+    deck: raw.deck,
+    ability: raw.ability,
+    strength: raw.strength,
+    desc_name: abilities.length ? abField(abilities[abilities.length - 1], "name") : "",
+    desc: desc,
+  });
+}
+
+function paintBetSide(id, player, self) {
+  var box = document.getElementById(id);
+  box.textContent = "";
+  var line = document.createElement("span");
+  line.textContent = betLine(player, self);
+  box.appendChild(line);
+  var cards = player && player.cards ? player.cards : [];
+  if (!cards.length) return;
+  var row = document.createElement("div");
+  row.className = "bet-cards";
+  cards.forEach(function (filename) {
+    var raw = card_dict.find(function (item) { return item.filename === filename; });
+    var thumb = document.createElement("div");
+    thumb.className = "bet-thumb";
+    thumb.title = cardTitle(filename);
+    if (raw) thumb.style.backgroundImage = smallURL(raw.deck + "_" + filename);
+    thumb.addEventListener("click", function () { if (raw) betLook(raw); });
+    row.appendChild(thumb);
+  });
+  box.appendChild(row);
+}
+
 function renderBet() {
   var panel = document.getElementById("bet-panel");
   var inMatch = document.getElementById("lobby-bar").classList.contains("hide");
@@ -274,8 +320,8 @@ function renderBet() {
   var theirs = betSide(betState, false);
   var nMine = mine && mine.cards ? mine.cards.length : 0;
   var nTheirs = theirs && theirs.cards ? theirs.cards.length : 0;
-  document.getElementById("bet-mine").textContent = betLine(mine, true);
-  document.getElementById("bet-theirs").textContent = betLine(theirs, false);
+  paintBetSide("bet-mine", mine, true);
+  paintBetSide("bet-theirs", theirs, false);
   var status = document.getElementById("bet-status");
   if (!betState.live) status.textContent = betState.players && betState.players.length > 1 ? t("bet_login") : t("end_wait");
   else if (betState.locked) status.textContent = t("bet_locked");

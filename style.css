@@ -2928,6 +2928,23 @@ main.noclick .leader-box {
 	display: none;
 }
 
+.bet-cards {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
+}
+
+.bet-thumb {
+	width: 46px;
+	height: 64px;
+	flex: 0 0 auto;
+	background-size: cover;
+	background-position: center;
+	border: 1px solid rgb(90, 70, 30);
+	cursor: pointer;
+}
+
 #tutorial-panel {
 	position: fixed;
 	z-index: 4200;
