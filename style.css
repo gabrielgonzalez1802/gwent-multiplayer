@@ -203,8 +203,8 @@ html {
 }
 
 #seat-role-live {
-	flex: 1 0 100%;
-	order: -1;
+	flex: 0 1 auto;
+	max-width: min(420px, calc(100vw - 120px));
 	text-align: right;
 }
 
@@ -240,7 +240,8 @@ html {
 	display: none;
 }
 
-#chat-open.unread {
+#chat-open.unread,
+#nav-open.unread {
 	border-color: goldenrod;
 	box-shadow: 0 0 8px goldenrod;
 }
@@ -2755,8 +2756,84 @@ main.noclick .leader-box {
 	gap: 8px;
 }
 
-#top-menu.hide {
+#top-menu.hide,
+#top-tools #top-menu.hide {
 	display: none;
+}
+
+#top-tools #top-menu {
+	position: static;
+	flex-direction: column;
+	align-items: stretch;
+	width: 100%;
+}
+
+#top-tools .menu-drop-btn {
+	width: 100%;
+	text-align: left;
+}
+
+#top-tools #top-menu .menu-panel {
+	position: static;
+	top: auto;
+	width: 100%;
+	min-width: 0;
+	max-width: none;
+	margin-top: 6px;
+	box-shadow: none;
+}
+
+#nav {
+	position: relative;
+}
+
+#nav-open {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: goldenrod;
+	background: rgb(20, 20, 20);
+	border: 1px solid rgba(196, 165, 116, 0.7);
+	box-shadow: 0 3px 5px rgba(0, 0, 0, 0.4);
+	cursor: pointer;
+}
+
+#nav-open svg {
+	width: 18px;
+	height: 18px;
+	display: block;
+}
+
+#nav-panel {
+	display: none;
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	z-index: 2;
+	box-sizing: border-box;
+	width: min(280px, calc(100vw - 24px));
+	max-height: calc(100vh - 64px);
+	overflow: auto;
+	padding: 8px;
+	background: rgba(8, 8, 8, 0.96);
+	border: 1px solid rgba(196, 165, 116, 0.55);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+#nav.open > #nav-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+#nav-tools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
 }
 
 .menu-drop {

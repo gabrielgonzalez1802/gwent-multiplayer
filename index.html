@@ -445,14 +445,23 @@
     <div id="top-tools" class="hide">
       <p id="seat-role-live" class="hide"></p>
       <div id="turn-clock" class="hide">1:00</div>
-      <button id="chat-open" type="button" class="hide" data-i18n="chat_title">Chat</button>
-      <button id="aid-open" type="button" data-i18n="aid_btn">Aid</button>
-      <button id="rules-open" type="button" data-i18n="rules_btn">Rules</button>
-      <button id="lang-toggle" type="button">ES</button>
-      <button id="full-toggle" type="button" aria-label="Fullscreen">
-        <svg class="full-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
-        <svg class="full-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
-      </button>
+      <div id="nav">
+        <button id="nav-open" type="button" aria-label="Menu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
+        </button>
+        <div id="nav-panel">
+          <div id="nav-tools">
+            <button id="chat-open" type="button" class="hide" data-i18n="chat_title">Chat</button>
+            <button id="aid-open" type="button" data-i18n="aid_btn">Aid</button>
+            <button id="rules-open" type="button" data-i18n="rules_btn">Rules</button>
+            <button id="lang-toggle" type="button">ES</button>
+            <button id="full-toggle" type="button" aria-label="Fullscreen">
+              <svg class="full-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
+              <svg class="full-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
     <section id="rules-modal" class="hide">
       <div id="rules-panel" role="dialog" aria-modal="true" aria-labelledby="rules-heading">

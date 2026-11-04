@@ -725,6 +725,8 @@ function syncChat() {
     panel.classList.add("hide");
     document.getElementById("chat-log").textContent = "";
     btn.classList.remove("unread");
+    var navBtn = document.getElementById("nav-open");
+    if (navBtn) navBtn.classList.remove("unread");
   }
   btn.classList.toggle("hide", !on);
   if (typeof paintSeatRole === "function") paintSeatRole();
@@ -750,7 +752,11 @@ function takeChat(data) {
   var name = Array.from(chatText(data.name)).slice(0, 16).join("") || t("opponent");
   pushChat(name, text, false);
   var panel = document.getElementById("chat-panel");
-  if (panel.classList.contains("hide")) document.getElementById("chat-open").classList.add("unread");
+  if (panel.classList.contains("hide")) {
+    document.getElementById("chat-open").classList.add("unread");
+    var navBtn = document.getElementById("nav-open");
+    if (navBtn) navBtn.classList.add("unread");
+  }
 }
 
 function sendChat() {
@@ -768,6 +774,10 @@ document.getElementById("chat-open").addEventListener("click", function (event) 
   var panel = document.getElementById("chat-panel");
   panel.classList.toggle("hide");
   document.getElementById("chat-open").classList.remove("unread");
+  var navBtn = document.getElementById("nav-open");
+  if (navBtn) navBtn.classList.remove("unread");
+  var nav = document.getElementById("nav");
+  if (nav) nav.classList.remove("open");
   if (panel.classList.contains("hide")) document.getElementById("chat-emoji-box").classList.add("hide");
   else document.getElementById("chat-input").focus();
 });

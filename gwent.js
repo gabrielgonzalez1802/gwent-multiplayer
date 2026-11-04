@@ -5622,6 +5622,8 @@ function refreshLocalized() {
   }
   if (tutorialOn) renderTutorial();
   if (typeof paintSeatRole === "function") paintSeatRole();
+  var navBtn = document.getElementById("nav-open");
+  if (navBtn) navBtn.setAttribute("aria-label", t("menu_nav"));
 }
 
 function closeMenus(except) {
@@ -5635,6 +5637,8 @@ function openMenuFor(el) {
   var drop = el && el.closest ? el.closest(".menu-drop") : null;
   closeMenus(drop);
   if (drop) drop.classList.add("open");
+  var nav = document.getElementById("nav");
+  if (nav && el && nav.contains(el)) nav.classList.add("open");
 }
 
 document.querySelectorAll("#top-menu .menu-drop-btn").forEach(function (btn) {
@@ -5646,9 +5650,29 @@ document.querySelectorAll("#top-menu .menu-drop-btn").forEach(function (btn) {
   });
 });
 document.addEventListener("click", function (event) {
-  if (event.target.closest && event.target.closest("#top-menu, #tutorial-panel")) return;
+  if (event.target.closest && event.target.closest("#nav, #tutorial-panel")) return;
   closeMenus();
+  var nav = document.getElementById("nav");
+  if (nav) nav.classList.remove("open");
 });
+
+var navPanel = document.getElementById("nav-panel");
+var topMenu = document.getElementById("top-menu");
+if (navPanel && topMenu) navPanel.insertBefore(topMenu, navPanel.firstChild);
+var navOpen = document.getElementById("nav-open");
+if (navOpen) {
+  navOpen.addEventListener("click", function (event) {
+    event.stopPropagation();
+    document.getElementById("nav").classList.toggle("open");
+  });
+  navOpen.setAttribute("aria-label", t("menu_nav"));
+}
+var navTools = document.getElementById("nav-tools");
+if (navTools) {
+  navTools.addEventListener("click", function () {
+    document.getElementById("nav").classList.remove("open");
+  });
+}
 
 document.getElementById("tutorial-game").addEventListener("click", startTutorial);
 document.getElementById("tutorial-close").addEventListener("click", endTutorial);
