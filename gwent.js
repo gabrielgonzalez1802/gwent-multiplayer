@@ -4675,7 +4675,7 @@ function seatPersonName(person, mine) {
 }
 
 function paintSeatRole() {
-  var seat = onlineSeat();
+  var seat = accountLabel() ? onlineSeat() : "";
   var live = document.getElementById("seat-role-live");
   var lobby = document.getElementById("seat-role");
   var text = "";

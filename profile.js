@@ -173,6 +173,7 @@ function acceptAccount(data) {
   applyAccountDeck();
   if (typeof netSend === "function" && accountToken())
     netSend(JSON.stringify({ type: "auth", token: accountToken() }));
+  if (typeof paintSeatRole === "function") paintSeatRole();
 }
 
 var betWanted = false;
@@ -853,6 +854,8 @@ if (accountToken()) {
   accountApi("/api/me").then(function (data) {
     if (!data.ok) {
       setAccountToken("");
+      accountProfile = null;
+      if (typeof paintSeatRole === "function") paintSeatRole();
       return;
     }
     acceptAccount(data);
