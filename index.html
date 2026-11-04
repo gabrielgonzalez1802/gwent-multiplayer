@@ -303,14 +303,14 @@
           </select>
         </div>
       </div>
-      <div class="menu-drop">
+      <div id="online-menu" class="menu-drop hide">
         <button type="button" class="menu-drop-btn" data-i18n="menu_online">Online</button>
         <div id="lobby-bar" class="menu-panel">
           <div id="no-server" class="hidden">
             <div id="no-server-icon"></div>
             <span data-i18n="no_server">Server is not running. Run npm start</span>
           </div>
-          <button id="online-game" type="button" data-i18n="online_play">Online</button>
+          <button id="online-game" type="button" class="hide" data-i18n="online_play">Online</button>
           <button id="create-game" class="hidden" data-i18n="create_game">Create Game</button>
           <button id="join-game" class="hidden" data-i18n="join_game">Join Game</button>
           <span id="join-input">
@@ -322,7 +322,6 @@
             <button id="bet-open" type="button" data-i18n="bet_open">Bet</button>
             <button id="start-game" data-i18n="ready">Ready</button>
             <button id="cancel-game" data-i18n="cancel">Cancel</button>
-            <p id="seat-role" class="hide"></p>
             <div id="session-id">
               <button class="copy-btn" data-i18n="session">Session:</button>
               <span class="tooltip" id="tooltip" data-i18n="copied">Copied to clipboard</span>

@@ -120,7 +120,9 @@ function renderAccount() {
   var inn = document.getElementById("account-in");
   var out = document.getElementById("account-out");
   var actions = document.getElementById("deck-actions");
+  var onlineMenu = document.getElementById("online-menu");
   if (actions) actions.classList.toggle("account", !!accountProfile);
+  if (onlineMenu) onlineMenu.classList.toggle("hide", !accountProfile);
   if (!accountProfile) {
     inn.classList.remove("hide");
     out.classList.add("hide");

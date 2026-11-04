@@ -2814,7 +2814,7 @@ main.noclick .leader-box {
 	right: 0;
 	z-index: 2;
 	box-sizing: border-box;
-	width: min(280px, calc(100vw - 24px));
+	width: min(440px, calc(100vw - 24px));
 	max-height: calc(100vh - 64px);
 	overflow: auto;
 	padding: 8px;
@@ -3127,6 +3127,21 @@ main.noclick .leader-box {
 
 #lobby-bar .hidden {
 	display: none;
+}
+
+#lobby-bar #session-start-control,
+#lobby-bar #join-input {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+#lobby-bar button,
+#lobby-bar #join-input input,
+#lobby-bar #session-id,
+#lobby-bar #session-id .copy-btn {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 #session-start-control {

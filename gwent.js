@@ -4677,7 +4677,6 @@ function seatPersonName(person, mine) {
 function paintSeatRole() {
   var seat = accountLabel() ? onlineSeat() : "";
   var live = document.getElementById("seat-role-live");
-  var lobby = document.getElementById("seat-role");
   var text = "";
   if (seat) {
     var mine = seatPersonName(player_me, true);
@@ -4693,11 +4692,10 @@ function paintSeatRole() {
       });
     } else text = t(seat === "host" ? "role_you_host" : "role_you_guest");
   }
-  [live, lobby].forEach(function (el) {
-    if (!el) return;
-    el.textContent = text;
-    el.classList.toggle("hide", !text);
-  });
+  if (live) {
+    live.textContent = text;
+    live.classList.toggle("hide", !text);
+  }
   document.body.classList.toggle("seat-live", !!text);
   var banner = document.getElementById("oponent-name");
   if (banner && player_op && seat) {
@@ -5647,6 +5645,13 @@ document.querySelectorAll("#top-menu .menu-drop-btn").forEach(function (btn) {
     var was = drop.classList.contains("open");
     closeMenus();
     if (!was) drop.classList.add("open");
+    if (!was && drop.id === "online-menu" && typeof ensureOnline === "function") {
+      if (!createdSessionId && !joinedSessionId) {
+        document.getElementById("create-game").classList.remove("hidden");
+        document.getElementById("join-game").classList.remove("hidden");
+      }
+      ensureOnline();
+    }
   });
 });
 document.addEventListener("click", function (event) {
