@@ -131,6 +131,7 @@ async function onSocketMessage(event) {
       player_op = new Player(1, rivalName, data.deck);
       var rivalBanner = document.getElementById("oponent-name");
       if (rivalBanner) rivalBanner.textContent = displayName(rivalName);
+      paintSeatRole();
       if (amReady) {
         customizationElem.classList.add("hide");
         gameStartControlsElem.classList.add("hide");
@@ -4077,6 +4078,7 @@ class DeckMaker {
     player_me = new Player(0, label || "you", me_deck);
     readyButtonElem.disabled = true;
     netSend(JSON.stringify({ type: "ready", deck: me_deck, name: label }));
+    paintSeatRole();
     setTimeout(function () { readyButtonElem.disabled = false; }, 8000);
     amReady = true;
     if (oponentReady) {
@@ -4658,6 +4660,61 @@ function accountLabel() {
   return accountProfile && accountProfile.name ? safeName(accountProfile.name) : "";
 }
 
+function onlineSeat() {
+  if (gameMode === "offline") return "";
+  if (typeof createdSessionId !== "undefined" && createdSessionId) return "host";
+  if (typeof joinedSessionId !== "undefined" && joinedSessionId) return "guest";
+  return "";
+}
+
+function seatPersonName(person, mine) {
+  if (person && person.name) return displayName(person.name);
+  if (!mine) return "";
+  var label = accountLabel();
+  return label ? displayName(label) : t("you");
+}
+
+function paintSeatRole() {
+  var seat = onlineSeat();
+  var live = document.getElementById("seat-role-live");
+  var lobby = document.getElementById("seat-role");
+  var text = "";
+  if (seat) {
+    var mine = seatPersonName(player_me, true);
+    var theirs = seatPersonName(player_op, false);
+    var hostName = seat === "host" ? mine : theirs;
+    var guestName = seat === "host" ? theirs : mine;
+    if (hostName && guestName) {
+      text = tf("role_line", {
+        host: t("role_host"),
+        guest: t("role_guest"),
+        hostName: hostName,
+        guestName: guestName,
+      });
+    } else text = t(seat === "host" ? "role_you_host" : "role_you_guest");
+  }
+  [live, lobby].forEach(function (el) {
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle("hide", !text);
+  });
+  document.body.classList.toggle("seat-live", !!text);
+  var banner = document.getElementById("oponent-name");
+  if (banner && player_op && seat) {
+    var rivalRole = seat === "host" ? t("role_guest") : t("role_host");
+    banner.textContent = displayName(player_op.name) + " · " + rivalRole;
+  }
+  paintBoardName("name-me", player_me, seat === "host" ? t("role_host") : seat === "guest" ? t("role_guest") : "");
+  paintBoardName("name-op", player_op, seat === "host" ? t("role_guest") : seat === "guest" ? t("role_host") : "");
+}
+
+function paintBoardName(id, person, role) {
+  var el = document.getElementById(id);
+  if (!el || !person) return;
+  el.textContent = displayName(person.name) + (role ? " · " + role : "");
+  el.classList.toggle("with-role", !!role);
+}
+
 function snapSide(isMe, swap) {
   return !!isMe !== !!swap;
 }
@@ -4897,6 +4954,7 @@ function applySnap(snap, swap) {
     if (typeof clearHold === "function") clearHold();
     var banner = document.getElementById("oponent-name");
     if (banner) banner.textContent = displayName(player_op.name);
+    paintSeatRole();
     var seat = typeof readSeat === "function" ? readSeat() : null;
     if (seat && seat.code && !createdSessionId && !joinedSessionId) {
       if (seat.host) createdSessionId = seat.code;
@@ -5563,6 +5621,7 @@ function refreshLocalized() {
     );
   }
   if (tutorialOn) renderTutorial();
+  if (typeof paintSeatRole === "function") paintSeatRole();
 }
 
 function closeMenus(except) {

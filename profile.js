@@ -727,6 +727,7 @@ function syncChat() {
     btn.classList.remove("unread");
   }
   btn.classList.toggle("hide", !on);
+  if (typeof paintSeatRole === "function") paintSeatRole();
 }
 
 function pushChat(name, text, mine) {
