@@ -72,7 +72,10 @@ async function onSocketMessage(event) {
 
     // Oponent is ready. If you are ready begin the game immediately
     case "ready":
-      player_op = new Player(1, "Oponent", data.deck);
+      var rivalName = safeName(data.name) || "Oponent";
+      player_op = new Player(1, rivalName, data.deck);
+      var rivalBanner = document.getElementById("oponent-name");
+      if (rivalBanner) rivalBanner.textContent = displayName(rivalName);
       if (amReady) {
         customizationElem.classList.add("hide");
         gameStartControlsElem.classList.add("hide");
@@ -4011,9 +4014,10 @@ class DeckMaker {
       cards: this.deck.filter((x) => x.count > 0),
     };
 
-    player_me = new Player(0, "you", me_deck);
+    var label = accountLabel();
+    player_me = new Player(0, label || "you", me_deck);
     readyButtonElem.disabled = true;
-    netSend(JSON.stringify({ type: "ready", deck: me_deck }));
+    netSend(JSON.stringify({ type: "ready", deck: me_deck, name: label }));
     setTimeout(function () { readyButtonElem.disabled = false; }, 8000);
     amReady = true;
     if (oponentReady) {
@@ -4575,6 +4579,14 @@ var board = new Board();
 var weather = new Weather();
 var game = new Game();
 var player_me, player_op;
+
+function safeName(name) {
+  return String(name || "").replace(/[<>]/g, "").slice(0, 16);
+}
+
+function accountLabel() {
+  return accountProfile && accountProfile.name ? safeName(accountProfile.name) : "";
+}
 
 ui.enablePlayer(false);
 let dm = new DeckMaker();
@@ -5174,6 +5186,8 @@ function refreshLocalized() {
     walk(player_op.deck);
     paint(player_op.leader);
     document.getElementById("name-op").textContent = displayName(player_op.name);
+    var rivalBanner = document.getElementById("oponent-name");
+    if (rivalBanner) rivalBanner.textContent = displayName(player_op.name);
     document.getElementById("deck-name-op").textContent = factionField(
       player_op.deck.faction,
       "name",
