@@ -168,15 +168,32 @@ function acceptAccount(data) {
     netSend(JSON.stringify({ type: "auth", token: accountToken() }));
 }
 
+var betWanted = false;
+var betDismissed = false;
+var betStamp = "";
+
+function betCardsOf(state) {
+  if (!state || !state.players) return false;
+  return state.players.some(function (player) { return player.cards && player.cards.length; });
+}
+
+function betStampOf(state) {
+  if (!state || !state.players) return "";
+  return state.players.map(function (player) { return (player.cards || []).join(","); }).join("|") + (state.locked ? ":1" : ":0");
+}
+
 function renderBet() {
   var panel = document.getElementById("bet-panel");
   var inMatch = document.getElementById("lobby-bar").classList.contains("hide");
-  if (!betState || !accountProfile || inMatch) {
+  var stamp = betStampOf(betState);
+  if (betDismissed && stamp !== betStamp) betDismissed = false;
+  if (!betState || !accountProfile || inMatch || betDismissed || (!betWanted && !betCardsOf(betState))) {
     panel.classList.add("hide");
+    betStamp = stamp;
     return;
   }
+  betStamp = stamp;
   panel.classList.remove("hide");
-  if (typeof closeMenus === "function") closeMenus();
   var controls = document.getElementById("bet-controls");
   var mine = betState.players.find(function (player) { return player.playerId === playerId; });
   var theirs = betState.players.find(function (player) { return player.playerId !== playerId; });
@@ -367,6 +384,9 @@ onSocketMessage = async function (event) {
   if (data.type === "sessionDeleted" || data.type === "sessionUnready") {
     if (data.type === "sessionDeleted") clearHold();
     betState = null;
+    betWanted = false;
+    betDismissed = false;
+    betStamp = "";
     document.getElementById("bet-panel").classList.add("hide");
   }
   return prevSocketMessage(event);
@@ -479,6 +499,21 @@ document.getElementById("bet-clear").addEventListener("click", function () {
 
 document.getElementById("bet-ok").addEventListener("click", function () {
   netSend(JSON.stringify({ type: "betOk" }));
+});
+
+document.getElementById("bet-open").addEventListener("click", function (event) {
+  event.stopPropagation();
+  betWanted = true;
+  betDismissed = false;
+  renderBet();
+});
+
+document.getElementById("bet-close").addEventListener("click", function (event) {
+  event.stopPropagation();
+  betWanted = false;
+  betDismissed = true;
+  betStamp = betStampOf(betState);
+  document.getElementById("bet-panel").classList.add("hide");
 });
 
 function placeAccount() {

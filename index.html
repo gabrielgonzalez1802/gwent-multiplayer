@@ -319,6 +319,7 @@
           </span>
           <button id="confirm-join" data-i18n="join">Join</button>
           <div id="session-start-control">
+            <button id="bet-open" type="button" data-i18n="bet_open">Bet</button>
             <button id="start-game" data-i18n="ready">Ready</button>
             <button id="cancel-game" data-i18n="cancel">Cancel</button>
             <div id="session-id">
@@ -380,7 +381,10 @@
       </div>
     </section>
     <div id="bet-panel" class="hide">
-      <p id="bet-title" data-i18n="bet_title">Bet</p>
+      <div id="bet-head">
+        <p id="bet-title" data-i18n="bet_title">Bet</p>
+        <button id="bet-close" type="button" data-i18n="bet_close">Close</button>
+      </div>
       <div id="bet-controls">
         <select id="bet-pick"></select>
         <button id="bet-add" type="button" data-i18n="bet_add">Add</button>
