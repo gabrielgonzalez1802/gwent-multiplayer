@@ -798,11 +798,11 @@ class Row extends CardContainer {
       horn: 0,
       mardroeme: 0,
     };
-    this.elem.addEventListener("click", function (event) {
+    this.elem.addEventListener("click", (event) => {
       if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
       ui.selectRow(this);
     }, true);
-    this.elem_special.addEventListener("click", function (event) {
+    this.elem_special.addEventListener("click", (event) => {
       if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
       ui.selectRow(this);
     }, false);
@@ -1036,7 +1036,7 @@ class Weather extends CardContainer {
     for (let key of Object.keys(this.types))
       this.types[key].rows = [board.row[i], board.row[5 - i++]];
 
-    this.elem.addEventListener("click", function (event) {
+    this.elem.addEventListener("click", (event) => {
       if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
       ui.selectRow(this);
     }, false);
