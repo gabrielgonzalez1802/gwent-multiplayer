@@ -1206,13 +1206,8 @@ body.lang-es #notif-zerrikania::after {
 	text-shadow: 0 0 1vw #6d5210;
 }
 
-@keyframes loading {
-	0% {
-			background-position: 100% 0;
-	}
-	100% {
-			background-position: 0 0;
-	}
+@keyframes pass-fill {
+	to { width: 100%; }
 }
 
 #end-screen button:hover {
@@ -1532,12 +1527,13 @@ body.lang-es #notif-zerrikania::after {
 
 #pass-button {
 	top: 56.5%;
-  left: 25%;
-  width: 162px;
-  height: 40px;
-  background-color: #0f0f0f;
-  font-size: 1rem;
-  font-weight: lighter;
+	left: 25%;
+	width: 162px;
+	height: 40px;
+	overflow: hidden;
+	background-color: #0f0f0f;
+	font-size: 1rem;
+	font-weight: lighter;
 }
 
 #turn-clock {
@@ -1580,10 +1576,16 @@ body.lang-es #notif-zerrikania::after {
 	color: #e2e2e2;
 }
 
-#pass-button.loading {
-	background: linear-gradient(to right, #f3f3f359, #0f0f0f, #0f0f0f);
-	background-size: 200% 100%;
-	animation: loading 2s linear forwards;
+#pass-button.loading::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 0;
+	background: rgba(242, 230, 200, 0.55);
+	animation: pass-fill 2s linear forwards;
+	pointer-events: none;
 }
 
 .field {
