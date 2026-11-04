@@ -298,7 +298,7 @@ function takeRewards(data) {
   accountProfile.owned = data.owned || accountProfile.owned;
   accountProfile.packs = data.packs;
   renderAccount();
-  applyAccountDeck();
+  syncOwnedDeck();
   var cards = cardList(data.cards);
   var text = "";
   if (data.note === "won") text = tf("bet_won", { cards: cards });
