@@ -95,6 +95,7 @@ function showSessionCode(code) {
   sessionIdDiv.classList.remove("hidden");
   const label = sessionIdDiv.querySelector(".copy-btn");
   if (label) label.textContent = t("session") + " " + createdSessionId;
+  if (typeof syncChat === "function") syncChat();
 }
 
 function handleLobbyMessage(event) {
@@ -262,6 +263,7 @@ function joinGame() {
       inputGroup.classList.add("hidden");
       btnConfirmJoin.classList.add("hidden");
       joinedSessionId = sessionCode;
+      if (typeof syncChat === "function") syncChat();
     } else {
       if (joined === "mix" && typeof showHold === "function") showHold(t("session_mix"));
       else gameAlert(t(joined === "mix" ? "session_mix" : "session_bad"));
@@ -316,6 +318,7 @@ function cancelSession() {
       socket.send(JSON.stringify({ type: "leaveSession", code: joined }));
   }
   if (typeof placeAccount === "function") placeAccount();
+  if (typeof syncChat === "function") syncChat();
 }
 
 function copySessionId() {

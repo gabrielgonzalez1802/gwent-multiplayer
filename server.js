@@ -278,6 +278,7 @@ wss.on("connection", (ws) => {
       console.log(`# Player ${ws.playerId} created Session ${sessionCode}`);
 
       ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode }));
+      account.sendBet(sessions[sessionCode]);
       return;
     }
 

@@ -351,11 +351,15 @@
         <button type="button" class="menu-drop-btn" data-i18n="menu_account">Account</button>
         <div id="account-bar" class="menu-panel">
           <div id="account-in">
+            <div id="account-tabs">
+              <button id="account-tab-login" type="button" class="on" data-i18n="acc_login">Log in</button>
+              <button id="account-tab-register" type="button" data-i18n="acc_register">Create account</button>
+            </div>
             <input id="account-name" maxlength="16" autocomplete="username" data-i18n-placeholder="acc_name" placeholder="Name" />
             <input id="account-pass" type="password" maxlength="64" autocomplete="current-password" data-i18n-placeholder="acc_pass" placeholder="Password" />
-            <select id="account-faction" aria-label="Faction"></select>
-            <button id="account-register" type="button" data-i18n="acc_register">Create account</button>
+            <select id="account-faction" class="hide" aria-label="Faction"></select>
             <button id="account-login" type="button" data-i18n="acc_login">Log in</button>
+            <button id="account-register" type="button" class="hide" data-i18n="acc_register">Create account</button>
           </div>
           <div id="account-out" class="hide">
             <span id="account-who"></span>
@@ -374,6 +378,7 @@
         <div id="pack-env">
           <div class="env-back"></div>
           <div class="env-pocket"></div>
+          <p id="pack-list"></p>
           <div class="env-flap"></div>
           <div class="env-seal"></div>
         </div>
@@ -395,6 +400,19 @@
       <p id="bet-theirs"></p>
       <p id="bet-status"></p>
     </div>
+    <aside id="chat-panel" class="hide">
+      <div id="chat-head">
+        <p id="chat-title" data-i18n="chat_title">Chat</p>
+        <button id="chat-close" type="button" data-i18n="bet_close">Close</button>
+      </div>
+      <div id="chat-log"></div>
+      <div id="chat-emoji-box" class="hide"></div>
+      <form id="chat-form">
+        <input id="chat-input" maxlength="200" autocomplete="off" data-i18n-placeholder="chat_placeholder" placeholder="Message" />
+        <button id="chat-emoji" type="button" data-i18n="chat_emoji" aria-label="Emoji">☺</button>
+        <button id="chat-send" type="submit" data-i18n="chat_send">Send</button>
+      </form>
+    </aside>
     <aside id="tutorial-panel" class="hide">
       <p id="tutorial-text"></p>
       <div>
@@ -425,6 +443,7 @@
     <script type="text/javascript" src="session.js"></script>
     <div id="top-tools" class="hide">
       <div id="turn-clock" class="hide">1:00</div>
+      <button id="chat-open" type="button" class="hide" data-i18n="chat_title">Chat</button>
       <button id="aid-open" type="button" data-i18n="aid_btn">Aid</button>
       <button id="rules-open" type="button" data-i18n="rules_btn">Rules</button>
       <button id="lang-toggle" type="button">ES</button>

@@ -559,6 +559,15 @@ function bothUsers(session) {
   );
 }
 
+function stakesMatch(mine, theirs) {
+  return mine.length > 0 && mine.length === theirs.length;
+}
+
+(function () {
+  if (!stakesMatch(["a"], ["b"]) || !stakesMatch(["a", "c"], ["b", "d"])) throw new Error("apuesta pareja");
+  if (stakesMatch([], []) || stakesMatch(["a"], []) || stakesMatch(["a"], ["b", "c"])) throw new Error("apuesta pareja");
+})();
+
 function sendBet(session) {
   if (!session) return;
   touch(session);
@@ -663,14 +672,11 @@ async function settle(session, kind, winnerId) {
   }
   for (let i = 0; i < session.players.length; i++) {
     const player = session.players[i];
-    let pack = false;
-    if ((session.played[player.playerId] || 0) > 0) {
-      await pool.query(
-        "INSERT INTO packs (user_id, opened, n, kind) VALUES (?,0,1,'full')",
-        [player.userId],
-      );
-      pack = true;
-    }
+    let result = "";
+    if (kind === "draw") result = "draw";
+    else if ((kind === "win" || kind === "forfeit") && winnerId)
+      result = player.playerId === winnerId ? "win" : "lose";
+    const granted = result ? await grantCpuCards(player.userId, result) : { pack: false, n: 0 };
     const info = notes[player.playerId];
     if (player.readyState === 1) {
       player.send(
@@ -678,7 +684,8 @@ async function settle(session, kind, winnerId) {
           type: "rewards",
           note: info.note,
           cards: info.cards,
-          pack: pack,
+          pack: granted.pack,
+          n: granted.n,
           packs: await packCount(player.userId),
           owned: await ownedMap(player.userId),
         }),
@@ -828,8 +835,8 @@ async function onSocket(ws, data, sessions) {
       const mine = session.betCards[ws.playerId] || [];
       const other = session.players.find((player) => player.playerId !== ws.playerId);
       const theirs = (other && session.betCards[other.playerId]) || [];
-      if (!mine.length || !theirs.length) {
-        ws.send(JSON.stringify({ type: "betRejected" }));
+      if (!stakesMatch(mine, theirs)) {
+        ws.send(JSON.stringify({ type: "betRejected", reason: "count", n: theirs.length, cards: theirs }));
         return "done";
       }
       session.betOk[ws.playerId] = true;

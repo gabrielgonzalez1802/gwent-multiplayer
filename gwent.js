@@ -4,6 +4,20 @@ class Controller {}
 
 // Websocket and Server config
 var accountProfile = null;
+var endChoice = "";
+var oppEndChoice = "";
+
+function leaveBecauseOpponentDecks() {
+  var wantedReplay = endChoice === "replay";
+  game.returnToCustomization();
+  if (!wantedReplay || typeof gameAlert !== "function") return;
+  gameAlert(t("end_deck_other"));
+  setTimeout(function () {
+    var box = document.getElementById("game-notice");
+    var yes = document.getElementById("game-notice-yes");
+    if (box && yes && !box.classList.contains("hide")) yes.click();
+  }, 6500);
+}
 let amReady = false;
 let oponentReady = false;
 let playerId = null;
@@ -83,6 +97,16 @@ async function onSocketMessage(event) {
       if (amReady) {
         readyButtonElem.classList.remove("ready");
         customizationElem.classList.remove("noclick");
+      }
+      break;
+
+    case "endChoice":
+      if (data.choice === "deck") {
+        oppEndChoice = "deck";
+        if (endChoice !== "deck") leaveBecauseOpponentDecks();
+      } else if (data.choice === "replay") {
+        oppEndChoice = "replay";
+        if (endChoice === "replay") game.restartGame();
       }
       break;
 
@@ -1247,7 +1271,18 @@ class Game {
       () => this.returnToCustomization(),
       false,
     );
-    this.replay_elem.addEventListener("click", () => this.restartGame(), false);
+    this.replay_elem.addEventListener("click", () => {
+      if (gameMode !== "online") {
+        this.restartGame();
+        return;
+      }
+      if (endChoice === "deck") return;
+      endChoice = "replay";
+      netSend(JSON.stringify({ type: "endChoice", choice: "replay" }));
+      if (oppEndChoice === "deck") leaveBecauseOpponentDecks();
+      else if (oppEndChoice === "replay") this.restartGame();
+      else this.replay_elem.textContent = t("end_wait");
+    }, false);
     this.reset();
   }
 
@@ -1308,6 +1343,8 @@ class Game {
 
   // Initializes player abilities, hands and waits for cointoss
   async startGame() {
+    endChoice = "";
+    oppEndChoice = "";
     if (tutorialOn && tutorialPhase !== "match") endTutorial();
     gameStartControlsElem.classList.add("hide");
     document.getElementById("lobby-bar").classList.add("hide");
@@ -1576,6 +1613,9 @@ class Game {
 
   // Sets up and displays the end-game screen
   async endGame() {
+    endChoice = "";
+    oppEndChoice = "";
+    this.replay_elem.textContent = t("replay");
     readyButtonElem.classList.remove("ready");
     let endScreen = document.getElementById("end-screen");
     let rows = endScreen.getElementsByTagName("tr");
@@ -1632,9 +1672,17 @@ class Game {
 
   // Returns the client to the deck customization screen
   returnToCustomization() {
+    var online = gameMode === "online";
     clearTurnClock();
     if (tutorialOn) endTutorial();
     gameMode = "online";
+    if (typeof syncChat === "function") syncChat();
+    if (online && endChoice !== "deck") {
+      endChoice = "deck";
+      netSend(JSON.stringify({ type: "endChoice", choice: "deck" }));
+    }
+    oppEndChoice = "";
+    this.replay_elem.textContent = t("replay");
     netSend(JSON.stringify({ type: "unReady" }));
     amReady = false;
     oponentReady = false;
@@ -2117,6 +2165,8 @@ class UI {
     paintLargeCard(previewFace, card);
     let desc_elem = this.preview.getElementsByClassName("card-description")[0];
     this.setDescription(card, desc_elem);
+    playCardDetail(previewFace);
+    playCardDetail(desc_elem);
   }
 
   // Hides the card preview then disables and removes highlighting from card destinations
@@ -2590,6 +2640,8 @@ class Carousel {
       this.container.cards[this.indices[this.index]],
       this.desc,
     );
+    playCardDetail(this.previews[2]);
+    playCardDetail(this.desc);
   }
 
   // Clears and quits the current carousel
@@ -3949,6 +4001,7 @@ class DeckMaker {
     if (warning != "") return gameAlert(warning);
     if (!this.leader) return gameAlert(t("need_leader"));
     gameMode = "online";
+    if (typeof syncChat === "function") syncChat();
     readyButtonElem.classList.add("ready");
     customizationElem.classList.add("noclick");
 
@@ -3975,6 +4028,7 @@ class DeckMaker {
     if (!this.leader) return gameAlert(t("need_leader"));
 
     gameMode = "offline";
+    if (typeof syncChat === "function") syncChat();
     let me_deck = {
       faction: this.faction,
       leader: card_dict[this.leader.index],
@@ -4285,6 +4339,13 @@ async function fade(fadeIn, elem, dur, delay) {
 }
 
 //      Get Image paths
+function playCardDetail(el) {
+  if (!el) return;
+  el.classList.remove("detail-in");
+  void el.offsetWidth;
+  el.classList.add("detail-in");
+}
+
 function iconURL(name, ext = "png") {
   return imgURL("icons/" + name, ext);
 }
@@ -4616,6 +4677,7 @@ let isSpacebarPressed = false;
 
 function handleKeyDown(event) {
   if (event.code === "Space" && !isSpacebarPressed) {
+    if (keyTyping(event)) return;
     isSpacebarPressed = true;
     spacebarPressTimer = setTimeout(() => {
       document.removeEventListener("keydown", handleKeyDown);

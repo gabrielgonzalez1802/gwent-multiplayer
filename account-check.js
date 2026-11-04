@@ -62,12 +62,17 @@ function unitFile(owned) {
   return Object.keys(owned).find((filename) => !/foltest|emhyr|eredin|francesca|crach|bran/.test(filename));
 }
 
+function unitFiles(owned, n) {
+  return Object.keys(owned).filter((filename) => !/foltest|emhyr|eredin|francesca|crach|bran/.test(filename)).slice(0, n);
+}
+
 async function main() {
   const a = await post("/api/register", { name: "ga" + stamp, password: "test1234", faction: "realms" });
   const b = await post("/api/register", { name: "gb" + stamp, password: "test1234", faction: "nilfgaard" });
   if (a.status !== 200 || b.status !== 200) throw new Error("registro " + a.status + " " + b.status);
-  const cardA = unitFile(a.body.owned);
+  const filesA = unitFiles(a.body.owned, 2);
   const cardB = unitFile(b.body.owned);
+  if (filesA.length < 2 || !cardB) throw new Error("sin cartas");
   const sa = await openSocket();
   const sb = await openSocket();
   sa.send(JSON.stringify({ type: "connect" }));
@@ -82,7 +87,13 @@ async function main() {
   const created = await waitFor(sa, (m) => m.type === "sessionCreated");
   sb.send(JSON.stringify({ type: "joinSession", code: created.code }));
   await waitFor(sa, (m) => m.type === "sessionReady");
-  sa.send(JSON.stringify({ type: "betSet", cards: [cardA] }));
+  sa.send(JSON.stringify({ type: "betSet", cards: filesA }));
+  sb.send(JSON.stringify({ type: "betSet", cards: [cardB] }));
+  await waitFor(sa, (m) => m.type === "betState" && m.players.some((player) => player.cards.length === 2) && m.players.some((player) => player.cards.length === 1));
+  sa.send(JSON.stringify({ type: "betOk" }));
+  const rejected = await waitFor(sa, (m) => m.type === "betRejected");
+  if (rejected.reason !== "count" || sa.inbox.some((m) => m.type === "betState" && m.locked)) throw new Error("apuesta desigual");
+  sa.send(JSON.stringify({ type: "betSet", cards: [filesA[0]] }));
   sb.send(JSON.stringify({ type: "betSet", cards: [cardB] }));
   await waitFor(sa, (m) => m.type === "betState" && (m.players[0].cards.length + m.players[1].cards.length) === 2);
   sa.send(JSON.stringify({ type: "betOk" }));
@@ -96,11 +107,13 @@ async function main() {
   sb.send(JSON.stringify({ type: "matchResult", rounds: [{ me: 0, op: 10 }, { me: 1, op: 8 }] }));
   const rewardA = await waitFor(sa, (m) => m.type === "rewards");
   const rewardB = await waitFor(sb, (m) => m.type === "rewards");
-  if (!rewardA.pack || rewardB.pack) throw new Error("sobre mal repartido");
+  if (!rewardA.pack || rewardA.n < 1 || rewardA.n > 3) throw new Error("sobre ganador");
+  if (rewardB.n !== 0 && rewardB.n !== 1) throw new Error("sobre perdedor");
+  if (rewardB.pack !== rewardB.n > 0) throw new Error("sobre perdedor");
   if (rewardA.note !== "won" || rewardA.cards[0] !== cardB) throw new Error("no gano la carta");
   if ((rewardA.owned[cardB] || 0) < 1) throw new Error("la carta no entro");
   if (rewardB.owned[cardB]) throw new Error("el perdedor conservo la carta");
-  if ((rewardA.owned[cardA] || 0) < 1) throw new Error("el ganador perdio su carta");
+  if ((rewardA.owned[filesA[0]] || 0) < 1) throw new Error("el ganador perdio su carta");
   const opened = await post("/api/pack/open", {}, a.body.token);
   if (opened.status !== 200 || !opened.body.filename) throw new Error("sobre cerrado");
   const started = await post("/api/cpu/start", { me: "realms", op: "monsters" }, a.body.token);
