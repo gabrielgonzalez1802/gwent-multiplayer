@@ -792,13 +792,14 @@ class Row extends CardContainer {
       horn: 0,
       mardroeme: 0,
     };
-    this.elem.addEventListener("click", () => ui.selectRow(this), true);
-    this.elem_special.addEventListener(
-      "click",
-      () => ui.selectRow(this),
-      false,
-      true,
-    );
+    this.elem.addEventListener("click", function (event) {
+      if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
+      ui.selectRow(this);
+    }, true);
+    this.elem_special.addEventListener("click", function (event) {
+      if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
+      ui.selectRow(this);
+    }, false);
     this.elem.addEventListener("mouseover", function () {
       tocar("card", false);
       this.style.boxShadow = "0 0 1.5vw #6d5210";
@@ -1029,7 +1030,10 @@ class Weather extends CardContainer {
     for (let key of Object.keys(this.types))
       this.types[key].rows = [board.row[i], board.row[5 - i++]];
 
-    this.elem.addEventListener("click", () => ui.selectRow(this), false);
+    this.elem.addEventListener("click", function (event) {
+      if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
+      ui.selectRow(this);
+    }, false);
   }
 
   // Adds a card if unique and clears all weather if 'clear weather' card added
@@ -1812,7 +1816,15 @@ class Card {
     let elem = document.createElement("div");
     elem.style.backgroundImage = smallURL(card.faction + "_" + card.filename);
     elem.classList.add("card");
-    elem.addEventListener("click", () => ui.selectCard(card), false);
+    elem.addEventListener("click", function (event) {
+      var action = cardClickAction(card, ui.previewCard, myKeyTurn());
+      if (action === "play") ui.selectCard(card);
+      else if (action === "look") {
+        event.stopPropagation();
+        ui.showPreviewVisuals(card);
+        document.getElementById("click-background").classList.remove("noclick");
+      }
+    }, false);
 
     if (card.row === "leader") return elem;
 
@@ -1997,6 +2009,7 @@ class UI {
   // LEO - aqui de fato coloca a carta na coluna.
   async selectRow(row, oponentCard = null) {
     this.lastRow = row;
+    if (this.previewCard && !handOwns(this.previewCard)) this.hidePreview();
 
     if (this.previewCard === null && oponentCard === null) {
       await ui.viewCardsInContainer(row);
@@ -4590,6 +4603,36 @@ function clearKeyPick() {
   var nodes = document.querySelectorAll(".key-pick");
   for (var i = 0; i < nodes.length; i++) nodes[i].classList.remove("key-pick");
 }
+
+function clickedCard(event) {
+  return !!(event && event.target && event.target.closest && event.target.closest(".card"));
+}
+
+function handOwns(card) {
+  return !!(card && card.holder && card.holder.hand && card.holder.hand.cards.indexOf(card) !== -1);
+}
+
+function cardClickAction(card, preview, turn) {
+  if (turn && handOwns(card)) return "play";
+  if (turn && preview && preview.name === "Decoy" && card && card.isUnit && card.isUnit()) return "play";
+  if (turn && handOwns(preview) && preview.name !== "Decoy") return "row";
+  return "look";
+}
+
+(function () {
+  var hand = { cards: [] };
+  var unit = { name: "A", holder: { hand: hand }, isUnit: function () { return true; } };
+  hand.cards.push(unit);
+  var board = { name: "B", holder: { hand: { cards: [] } }, isUnit: function () { return true; } };
+  var hero = { name: "C", holder: { hand: { cards: [] } }, isUnit: function () { return false; } };
+  var decoy = { name: "Decoy", holder: { hand: { cards: [] } } };
+  if (cardClickAction(unit, null, true) !== "play") throw new Error("clic mano");
+  if (cardClickAction(board, null, true) !== "look") throw new Error("clic tablero");
+  if (cardClickAction(board, unit, true) !== "row") throw new Error("clic al jugar");
+  if (cardClickAction(board, decoy, true) !== "play") throw new Error("clic senuelo");
+  if (cardClickAction(hero, decoy, true) !== "look") throw new Error("clic heroe");
+  if (cardClickAction(board, null, false) !== "look") throw new Error("clic turno rival");
+})();
 
 function myKeyTurn() {
   if (typeof game === "undefined" || !game || typeof player_me === "undefined" || !player_me) return false;

@@ -1271,6 +1271,11 @@ body.lang-es #notif-zerrikania::after {
 	width: 31.4%;
 	height: 12.5%;
 	margin-bottom: -26.25%;
+	z-index: 5;
+}
+
+.leader-box > .fade {
+	opacity: 0.72;
 }
 
 .leader-box .card {
@@ -1291,6 +1296,7 @@ body.lang-es #notif-zerrikania::after {
 	height: 98%;
 	width: 95%;
 	border-radius: .6vw;
+	box-shadow: 0 0 0 .15vw #f2e6c8, 0 0 .6vw rgba(0, 0, 0, .8);
 }
 
 .leader-active {
@@ -1597,8 +1603,12 @@ body.lang-es #notif-zerrikania::after {
 	height: 38.5%;
 }
 
-.field .hero {
-	pointer-events: none;
+.field .card.noclick,
+#weather .card.noclick,
+.row-special > .card.noclick,
+main.noclick .card,
+main.noclick .leader-box {
+	pointer-events: auto !important;
 }
 
 #field-op {
