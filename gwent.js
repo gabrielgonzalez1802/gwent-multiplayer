@@ -21,6 +21,11 @@ function leaveBecauseOpponentDecks() {
 let amReady = false;
 let oponentReady = false;
 let playerId = null;
+try {
+  var keptPlayer = localStorage.getItem("gwent-player");
+  if (keptPlayer) playerId = keptPlayer;
+} catch (e) {}
+var resumeWait = null;
 
 const readyButtonElem = document.getElementById("start-game");
 const oponentReadyElem = document.getElementById("oponent-ready");
@@ -37,7 +42,57 @@ async function onSocketMessage(event) {
   switch (data.type) {
     case "welcome":
       playerId = data.playerId;
+      afterWelcome();
       console.log("Welcome");
+      break;
+
+    case "sessionRestored":
+      gameMode = "online";
+      if (data.host) {
+        joinedSessionId = null;
+        createdSessionId = data.code;
+        if (typeof saveSeat === "function") saveSeat(data.code, true);
+      } else {
+        createdSessionId = null;
+        joinedSessionId = data.code;
+        if (typeof saveSeat === "function") saveSeat(data.code, false);
+      }
+      if (typeof syncChat === "function") syncChat();
+      if (player_me) break;
+      if (!iniciou) inicio();
+      if (data.live) {
+        showHold(t("resume_back"));
+        netSend(JSON.stringify({ type: "resumeAsk" }));
+        clearTimeout(resumeWait);
+        resumeWait = setTimeout(function () {
+          if (player_me) return;
+          clearHold();
+          var own = ownSnap(data.code);
+          if (own) applySnap(own, false);
+          else {
+            if (typeof showRestoredLobby === "function") showRestoredLobby(data.code, !!data.host);
+            showReward(t("resume_fail"));
+          }
+        }, 4000);
+      } else if (typeof showRestoredLobby === "function") {
+        showRestoredLobby(data.code, !!data.host);
+      }
+      break;
+
+    case "sessionGone":
+      if (!player_me && !createdSessionId && !joinedSessionId && typeof clearSeat === "function") clearSeat();
+      if (!player_me && typeof clearHold === "function") clearHold();
+      break;
+
+    case "resumeAsk":
+      if (gameMode === "online" && player_me && player_op && game && game.roundCount > 0) {
+        var snap = matchSnap();
+        if (snap) netSend(JSON.stringify({ type: "resumeSnap", snap: snap }));
+      }
+      break;
+
+    case "resumeSnap":
+      if (!player_me && data.snap) applySnap(data.snap, true);
       break;
 
     // Oponent has joined and the session is ready
@@ -1310,7 +1365,7 @@ class Game {
   }
 
   // Sets up player faction abilities and psasive leader abilities
-  initPlayers(p1, p2) {
+  initPlayers(p1, p2, quiet) {
     let l1 = ability_dict[p1.leader.abilities[0]];
     let l2 = ability_dict[p2.leader.abilities[0]];
     if (
@@ -1329,7 +1384,7 @@ class Game {
     initFaction(p2);
 
     function initLeader(player, leader) {
-      if (leader.placed) leader.placed(player.leader);
+      if (!quiet && leader.placed) leader.placed(player.leader);
       Object.keys(leader)
         .filter((key) => game[key])
         .map((key) => game[key].push(leader[key]));
@@ -1549,6 +1604,7 @@ class Game {
 
       this.currPlayer.startTurn();
       armTurnClock();
+      rememberMatch();
     } catch (err) {
       console.error(err);
       this.giveTurnBack();
@@ -1693,6 +1749,9 @@ class Game {
 
     ui.toggleMusic_elem.style.left = "20.5vw";
 
+    try {
+      sessionStorage.removeItem("gwent-match");
+    } catch (e) {}
     try {
       this.reset();
       if (player_me) player_me.reset();
@@ -2176,7 +2235,7 @@ class UI {
   hidePreview() {
     clearKeyPick();
     document.getElementById("click-background").classList.add("noclick");
-    player_me.hand.cards.forEach((c) => c.elem.classList.remove("noclick"));
+    if (player_me) player_me.hand.cards.forEach((c) => c.elem.classList.remove("noclick"));
 
     this.preview.classList.add("hide");
     this.setSelectable(null, false);
@@ -4580,6 +4639,17 @@ var weather = new Weather();
 var game = new Game();
 var player_me, player_op;
 
+function afterWelcome() {
+  try {
+    if (playerId) localStorage.setItem("gwent-player", playerId);
+  } catch (e) {}
+  if (typeof accountToken === "function" && accountToken())
+    netSend(JSON.stringify({ type: "auth", token: accountToken() }));
+  var seat = typeof readSeat === "function" ? readSeat() : null;
+  if (!seat || !seat.code || player_me) return;
+  netSend(JSON.stringify({ type: "resumeAsk" }));
+}
+
 function safeName(name) {
   return String(name || "").replace(/[<>]/g, "").slice(0, 16);
 }
@@ -4587,6 +4657,268 @@ function safeName(name) {
 function accountLabel() {
   return accountProfile && accountProfile.name ? safeName(accountProfile.name) : "";
 }
+
+function snapSide(isMe, swap) {
+  return !!isMe !== !!swap;
+}
+
+function cardFromFile(filename) {
+  for (var i = 0; i < card_dict.length; i++) {
+    if (card_dict[i].filename === filename) return card_dict[i];
+  }
+  return null;
+}
+
+function pileFiles(pile) {
+  var out = [];
+  if (!pile || !pile.cards) return out;
+  for (var i = 0; i < pile.cards.length; i++) out.push(pile.cards[i].filename);
+  return out;
+}
+
+function sideSnap(player) {
+  return {
+    name: player.name,
+    faction: player.deck.faction,
+    leader: player.leader ? player.leader.filename : "",
+    leaderOn: !!player.leaderAvailable,
+    health: player.health,
+    passed: !!player.passed,
+    hand: pileFiles(player.hand),
+    deck: pileFiles(player.deck),
+    grave: pileFiles(player.grave),
+  };
+}
+
+function matchSnap() {
+  if (gameMode !== "online" || !player_me || !player_op || !game || game.roundCount < 1) return null;
+  var rows = [];
+  for (var i = 0; i < board.row.length; i++) {
+    var items = board.row[i].cards.map(function (card) {
+      return { f: card.filename, me: card.holder === player_me };
+    });
+    if (board.row[i].special) {
+      items.push({
+        f: board.row[i].special.filename,
+        me: board.row[i].special.holder === player_me,
+      });
+    }
+    rows.push(items);
+  }
+  return {
+    code: createdSessionId || joinedSessionId || "",
+    round: game.roundCount,
+    first: game.firstPlayer === player_me ? "me" : "op",
+    turn: game.currPlayer === player_me ? "me" : "op",
+    weather: pileFiles(weather),
+    rows: rows,
+    history: game.roundHistory.map(function (round) {
+      return {
+        me: round.score_me,
+        op: round.score_op,
+        winner: round.winner === player_me ? "me" : round.winner === player_op ? "op" : "",
+      };
+    }),
+    me: sideSnap(player_me),
+    op: sideSnap(player_op),
+  };
+}
+
+function rememberMatch() {
+  var snap = matchSnap();
+  if (!snap) return;
+  try { sessionStorage.setItem("gwent-match", JSON.stringify(snap)); } catch (e) {}
+}
+
+function ownSnap(code) {
+  try {
+    var snap = JSON.parse(sessionStorage.getItem("gwent-match") || "null");
+    if (!snap || snap.code !== code || snap.round < 1) return null;
+    return snap;
+  } catch (e) {
+    return null;
+  }
+}
+
+function showMatchScreen() {
+  if (!iniciou) inicio();
+  gameStartControlsElem.classList.add("hide");
+  document.getElementById("lobby-bar").classList.add("hide");
+  document.getElementById("top-menu").classList.add("hide");
+  closeMenus();
+  var accountBar = document.getElementById("account-bar");
+  var betPanel = document.getElementById("bet-panel");
+  if (accountBar) accountBar.classList.add("hide");
+  if (betPanel) betPanel.classList.add("hide");
+  customizationElem.classList.add("hide");
+  isOponentReadyElem.classList.add("hidden");
+  ui.toggleMusic_elem.style.left = "26vw";
+  ui.toggleMusic_elem.classList.remove("music-customization");
+  var main = document.getElementsByTagName("main")[0];
+  if (main) main.style.display = "";
+}
+
+function playerFromSide(id, side) {
+  var name = safeName(side.name) || (id === 0 ? "you" : "Oponent");
+  return new Player(id, name, {
+    faction: side.faction,
+    leader: cardFromFile(side.leader),
+    cards: [],
+  });
+}
+
+function replacePile(pile, files, holder, ordered) {
+  while (pile.cards.length) pile.removeCard(0);
+  for (var i = 0; i < files.length; i++) {
+    var raw = cardFromFile(files[i]);
+    if (!raw) continue;
+    var card = new Card(raw, holder);
+    card.holder = holder;
+    if (ordered) {
+      pile.cards.push(card);
+      if (pile.elem) pile.elem.appendChild(card.elem);
+    } else pile.addCard(card);
+  }
+  if (pile.resize) pile.resize();
+}
+
+function placeRow(row, items, swap) {
+  for (var i = 0; i < items.length; i++) {
+    var raw = cardFromFile(items[i].f);
+    if (!raw) continue;
+    var holder = snapSide(items[i].me, swap) ? player_me : player_op;
+    var card = new Card(raw, holder);
+    card.holder = holder;
+    if (card.isSpecial()) {
+      row.special = card;
+      row.elem_special.appendChild(card.elem);
+    } else {
+      row.addCardElement(card, row.addCardSorted(card));
+    }
+    row.updateState(card, true);
+    card.elem.classList.add("noclick");
+  }
+  if (row.resize) row.resize();
+}
+
+function placeWeather(files) {
+  ["rain", "fog", "frost"].forEach(function (name) {
+    board.row.forEach(function (row) {
+      var el = row.elem_parent.getElementsByClassName("row-weather")[0];
+      if (el) el.classList.remove(name);
+      row.effects.weather = false;
+    });
+  });
+  while (weather.cards.length) weather.removeCard(0);
+  ["rain", "fog", "frost"].forEach(function (name) { weather.types[name].count = 0; });
+  for (var i = 0; i < files.length; i++) {
+    var raw = cardFromFile(files[i]);
+    if (!raw) continue;
+    var card = new Card(raw, null);
+    weather.cards.push(card);
+    if (weather.elem) weather.elem.appendChild(card.elem);
+    card.elem.classList.add("noclick");
+    weather.changeWeather(card, function (kind) {
+      return ++weather.types[kind].count === 1;
+    }, function (row, type) {
+      row.effects.weather = true;
+      var el = row.elem_parent.getElementsByClassName("row-weather")[0];
+      if (el) el.classList.add(type.name);
+    });
+  }
+  if (weather.resize) weather.resize();
+}
+
+function paintLife(player, health) {
+  player.health = health;
+  if (health < 2) document.getElementById("gem2-" + player.tag).classList.remove("gem-on");
+  if (health < 1) document.getElementById("gem1-" + player.tag).classList.remove("gem-on");
+}
+
+function resumeTurn() {
+  document.getElementById("stats-me").classList.remove("current-turn");
+  document.getElementById("stats-op").classList.remove("current-turn");
+  game.currPlayer.startTurn();
+  var mine = game.currPlayer === player_me;
+  if (mine) {
+    passButton.classList.remove("hidden");
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+    ui.enablePlayer(true);
+  } else {
+    passButton.classList.add("hidden");
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
+    ui.enablePlayer(false);
+  }
+  armTurnClock();
+  rememberMatch();
+}
+
+function applySnap(snap, swap) {
+  clearTimeout(resumeWait);
+  if (player_me || !snap || snap.round < 1 || !snap.me || !snap.op) return;
+  try {
+    showMatchScreen();
+    game.reset();
+    var meSide = swap ? snap.op : snap.me;
+    var opSide = swap ? snap.me : snap.op;
+    player_me = playerFromSide(0, meSide);
+    player_op = playerFromSide(1, opSide);
+    game.initPlayers(player_me, player_op, true);
+    replacePile(player_me.hand, meSide.hand || [], player_me, false);
+    replacePile(player_op.hand, opSide.hand || [], player_op, false);
+    replacePile(player_me.deck, meSide.deck || [], player_me, true);
+    replacePile(player_op.deck, opSide.deck || [], player_op, true);
+    replacePile(player_me.grave, meSide.grave || [], player_me, false);
+    replacePile(player_op.grave, opSide.grave || [], player_op, false);
+    for (var i = 0; i < board.row.length; i++) {
+      var src = swap ? snap.rows[5 - i] : snap.rows[i];
+      placeRow(board.row[i], src || [], swap);
+    }
+    placeWeather(snap.weather || []);
+    board.row.forEach(function (row) { row.updateScore(); });
+    paintLife(player_me, meSide.health);
+    paintLife(player_op, opSide.health);
+    player_me.setPassed(!!meSide.passed);
+    player_op.setPassed(!!opSide.passed);
+    if (!meSide.leaderOn && player_me.leaderAvailable) player_me.disableLeader();
+    if (!opSide.leaderOn && player_op.leaderAvailable) player_op.disableLeader();
+    game.roundHistory = (snap.history || []).map(function (round) {
+      return {
+        winner: round.winner ? (snapSide(round.winner === "me", swap) ? player_me : player_op) : null,
+        score_me: swap ? round.op : round.me,
+        score_op: swap ? round.me : round.op,
+      };
+    });
+    game.roundCount = snap.round;
+    game.firstPlayer = snapSide(snap.first === "me", swap) ? player_me : player_op;
+    game.currPlayer = snapSide(snap.turn === "me", swap) ? player_me : player_op;
+    if (typeof clearHold === "function") clearHold();
+    var banner = document.getElementById("oponent-name");
+    if (banner) banner.textContent = displayName(player_op.name);
+    var seat = typeof readSeat === "function" ? readSeat() : null;
+    if (seat && seat.code && !createdSessionId && !joinedSessionId) {
+      if (seat.host) createdSessionId = seat.code;
+      else joinedSessionId = seat.code;
+      if (typeof syncChat === "function") syncChat();
+    }
+    resumeTurn();
+  } catch (err) {
+    console.error(err);
+    try { game.reset(); } catch (e) {}
+    player_me = null;
+    player_op = null;
+    if (typeof clearHold === "function") clearHold();
+    showReward(t("resume_fail"));
+  }
+}
+
+// ponytail: la foto sale al empezar cada turno y, si el otro sigue en la partida, manda la suya al recargar. Durante el robo inicial roundCount es 0 y no hay tablero que reconstruir. El paso siguiente seria guardar tambien ese robo.
+(function () {
+  if (snapSide(true, false) !== true || snapSide(true, true) !== false) throw new Error("reanudar");
+  if (snapSide(false, true) !== true || 5 - 2 !== 3) throw new Error("reanudar");
+})();
 
 ui.enablePlayer(false);
 let dm = new DeckMaker();
@@ -4682,6 +5014,8 @@ window.onload = function () {
       inicio();
     });
   isLoaded = true;
+  var seat = typeof readSeat === "function" ? readSeat() : null;
+  if (seat && seat.code && playerId && typeof ensureOnline === "function") ensureOnline();
 };
 
 let spacebarPressTimer;

@@ -88,14 +88,50 @@ function showServerDown() {
 
 let createWatch = null;
 
+function saveSeat(code, host) {
+  try {
+    localStorage.setItem("gwent-seat", JSON.stringify({ code: code, host: !!host }));
+  } catch (e) {}
+}
+
+function clearSeat() {
+  try { localStorage.removeItem("gwent-seat"); } catch (e) {}
+  try { sessionStorage.removeItem("gwent-match"); } catch (e) {}
+}
+
+function readSeat() {
+  try { return JSON.parse(localStorage.getItem("gwent-seat") || "null"); } catch (e) { return null; }
+}
+
 function showSessionCode(code) {
   createdSessionId = code;
+  saveSeat(code, true);
   clearTimeout(createWatch);
   noServerWarningElement.classList.add("hidden");
   sessionIdDiv.classList.remove("hidden");
   const label = sessionIdDiv.querySelector(".copy-btn");
   if (label) label.textContent = t("session") + " " + createdSessionId;
   if (typeof syncChat === "function") syncChat();
+}
+
+function showRestoredLobby(code, host) {
+  if (host) showSessionCode(code);
+  else {
+    createdSessionId = null;
+    joinedSessionId = code;
+    saveSeat(code, false);
+    if (inputField) inputField.value = code;
+    if (typeof syncChat === "function") syncChat();
+  }
+  btnReadyElem.classList.remove("hidden");
+  btnReadyElem.classList.remove("disabled");
+  btnCancelElem.classList.remove("hidden");
+  btnCreateElem.classList.add("hidden");
+  btnJoinElem.classList.add("hidden");
+  inputGroup.classList.add("hidden");
+  btnConfirmJoin.classList.add("hidden");
+  var lobby = document.getElementById("lobby-bar");
+  if (lobby) lobby.classList.remove("hide");
 }
 
 function handleLobbyMessage(event) {
@@ -186,6 +222,7 @@ function openSocket(address) {
       if (data.playerId) playerId = data.playerId;
       attachSocketListeners();
       markOnline();
+      if (typeof afterWelcome === "function") afterWelcome();
       resolve(true);
     };
     ws.onerror = () => fail();
@@ -263,6 +300,7 @@ function joinGame() {
       inputGroup.classList.add("hidden");
       btnConfirmJoin.classList.add("hidden");
       joinedSessionId = sessionCode;
+      saveSeat(sessionCode, false);
       if (typeof syncChat === "function") syncChat();
     } else {
       if (joined === "mix" && typeof showHold === "function") showHold(t("session_mix"));
@@ -294,6 +332,7 @@ async function findSession() {
 }
 
 function cancelSession() {
+  clearSeat();
   console.log("cancelSession");
   btnReadyElem.classList.add("hidden");
   btnCreateElem.classList.remove("hidden");

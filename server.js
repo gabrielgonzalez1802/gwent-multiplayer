@@ -253,11 +253,30 @@ wss.on("connection", (ws) => {
           console.log(
             `# Player ${ws.playerId} reconnected to Session ${d.code}`,
           );
+          const host = session.players[0] === ws;
+          ws.send(JSON.stringify({
+            type: "sessionRestored",
+            code: d.code,
+            host: host,
+            live: !!session.matchLive,
+          }));
+          if (session.rules) {
+            ws.send(JSON.stringify({
+              type: "sessionRules",
+              custom: !!session.custom,
+              rules: session.rules,
+            }));
+          }
+          account.sendBet(session);
         } else if (takeExpired(ws.playerId)) {
           ws.send(JSON.stringify({ type: "sessionExpired" }));
+        } else {
+          ws.send(JSON.stringify({ type: "sessionGone" }));
         }
       } else if (takeExpired(ws.playerId)) {
         ws.send(JSON.stringify({ type: "sessionExpired" }));
+      } else if (data?.id) {
+        ws.send(JSON.stringify({ type: "sessionGone" }));
       }
 
       return;
@@ -413,6 +432,8 @@ wss.on("connection", (ws) => {
       }
     }
 
+    if (data.type === "unReady" && ws.sessionCode && sessions[ws.sessionCode])
+      sessions[ws.sessionCode].matchLive = false;
     if (data.type === "play" || data.type === "useLeader") account.notePlay(ws, sessions);
     if (data.type === "ready" && !(await account.allowReady(ws, data, sessions))) return;
     if (data.type === "ready") ws.send(JSON.stringify({ type: "readyAck" }));
