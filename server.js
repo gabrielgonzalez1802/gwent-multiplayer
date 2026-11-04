@@ -51,6 +51,31 @@ const wss = new WebSocket.Server({ server: httpServer });
 let sessions = {};
 let players = [];
 let disconnectedPlayers = {}; // { [playerId]: { code, timeoutId } }
+let expiredPlayers = {}; // { [playerId]: timestamp }
+
+const EXPIRED_MS = 10 * 60 * 1000;
+
+function markExpired(session) {
+  const now = Date.now();
+  Object.keys(expiredPlayers).forEach((id) => {
+    if (now - expiredPlayers[id] > EXPIRED_MS) delete expiredPlayers[id];
+  });
+  if (!session) return;
+  session.players.forEach((player) => {
+    if (player.playerId) expiredPlayers[player.playerId] = now;
+  });
+}
+
+function takeExpired(playerId) {
+  if (!playerId || !expiredPlayers[playerId]) return false;
+  delete expiredPlayers[playerId];
+  return true;
+}
+
+(function () {
+  expiredPlayers.__t = Date.now();
+  if (!takeExpired("__t") || takeExpired("__t")) throw new Error("sesion vencida");
+})();
 
 // Helper function to generate a random character sequence
 function cleanRules(raw) {
@@ -208,6 +233,7 @@ wss.on("connection", (ws) => {
 
         const session = sessions[d.code];
         if (session) {
+          takeExpired(ws.playerId);
           // replace the old socket placeholder (if present) with this ws
           const idx = session.players.findIndex(
             (p) => p.playerId === ws.playerId,
@@ -227,7 +253,11 @@ wss.on("connection", (ws) => {
           console.log(
             `# Player ${ws.playerId} reconnected to Session ${d.code}`,
           );
+        } else if (takeExpired(ws.playerId)) {
+          ws.send(JSON.stringify({ type: "sessionExpired" }));
         }
+      } else if (takeExpired(ws.playerId)) {
+        ws.send(JSON.stringify({ type: "sessionExpired" }));
       }
 
       return;
@@ -414,9 +444,11 @@ wss.on("connection", (ws) => {
         const sess = sessions[code];
         Promise.resolve(account.forfeit(sess, loserId)).finally(() => {
           if (!sessions[code]) return;
+          markExpired(sess);
           const other = sess.players.find((p) => p.playerId !== loserId);
           if (other && other.readyState === WebSocket.OPEN) {
             other.send(JSON.stringify({ type: "sessionDeleted" }));
+            takeExpired(other.playerId);
           }
           clearMatchTimers(sess);
           console.log(`# Session ${code} deleted due to no reconnection`);

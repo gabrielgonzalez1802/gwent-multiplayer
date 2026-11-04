@@ -40,12 +40,11 @@ async function onSocketMessage(event) {
       applySessionRules(data);
       break;
     case "sessionDeleted":
+    case "sessionExpired":
       Carousel.curr?.cancel();
       ui.enablePlayer(true);
       await ui.notification("win-opleft", 1200);
-
-      game.returnToCustomization();
-      cancelSession();
+      leaveFinishedMatch(true);
       break;
     // Oponent has left and the session is no longer ready
     case "sessionUnready":
@@ -144,6 +143,7 @@ async function onSocketMessage(event) {
 
     case "forcedPass":
       clearTurnClock();
+      clockClosed = true;
       if (data.player === playerId) {
         if (player_me && !player_me.passed) player_me.passRound();
       } else if (player_op && !player_op.passed) {
@@ -1009,7 +1009,7 @@ class Row extends CardContainer {
     super.reset();
     while (this.special) this.removeCard(this.special);
     while (this.elem_special.firstChild)
-      this.elem_special.removeChild(this.elem_speical.firstChild);
+      this.elem_special.removeChild(this.elem_special.firstChild);
     this.total = 0;
     //["rain","fog","frost"].forEach( w => this.removeOverlay(w) );
     this.halfWeather = false;
@@ -1496,6 +1496,7 @@ class Game {
         ui.notification(this.currPlayer.tag + "-turn", 1200);
       }
       if (this.currPlayer === player_me) {
+        clockClosed = false;
         passButton.classList.remove("hidden");
         document.addEventListener("keydown", handleKeyDown);
         document.addEventListener("keyup", handleKeyUp);
@@ -1620,6 +1621,13 @@ class Game {
 
     fadeIn(endScreen, 300);
     ui.enablePlayer(true);
+    if (gameMode === "online" && clockClosed) {
+      clockClosed = false;
+      setTimeout(() => {
+        if (this.endScreen.classList.contains("hide")) return;
+        leaveFinishedMatch(false);
+      }, 2200);
+    }
   }
 
   // Returns the client to the deck customization screen
@@ -1634,18 +1642,29 @@ class Game {
 
     ui.toggleMusic_elem.style.left = "20.5vw";
 
-    this.reset();
-    player_me.reset();
-    player_op.reset();
+    try {
+      this.reset();
+      if (player_me) player_me.reset();
+      if (player_op) player_op.reset();
+    } catch (err) {
+      console.error(err);
+    }
     ui.toggleMusic_elem.classList.add("music-customization");
     this.endScreen.classList.add("hide");
     customizationElem.classList.remove("hide");
+    customizationElem.style.display = "";
     gameStartControlsElem.classList.remove("hide");
-    document.getElementById("lobby-bar").classList.remove("hide");
-    document.getElementById("top-menu").classList.remove("hide");
+    var menu = document.getElementById("top-menu");
+    var lobby = document.getElementById("lobby-bar");
+    if (menu) menu.classList.remove("hide");
+    if (lobby) lobby.classList.remove("hide");
     var accountBar = document.getElementById("account-bar");
     if (accountBar) accountBar.classList.remove("hide");
-    if (typeof syncOwnedDeck === "function") syncOwnedDeck();
+    closeMenus();
+    isOponentReadyElem.classList.add("hidden");
+    if (typeof syncOwnedDeck === "function") {
+      try { syncOwnedDeck(); } catch (err) { console.error(err); }
+    }
   }
 
   // Restarts the last game with the same decks
@@ -4514,6 +4533,26 @@ function cartaNaLinha(id, carta) {
 }
 
 var turnClock = null;
+var clockClosed = false;
+
+function leaveFinishedMatch(dropSession) {
+  try {
+    if (game) game.returnToCustomization();
+  } catch (err) {
+    console.error(err);
+  }
+  var menu = document.getElementById("top-menu");
+  var deck = document.getElementById("deck-customization");
+  if (menu) menu.classList.remove("hide");
+  if (deck) {
+    deck.classList.remove("hide");
+    deck.style.display = "";
+  }
+  closeMenus();
+  if (dropSession && typeof cancelSession === "function") {
+    try { cancelSession(); } catch (err) { console.error(err); }
+  }
+}
 
 function clearTurnClock() {
   clearInterval(turnClock);

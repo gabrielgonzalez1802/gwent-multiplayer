@@ -303,17 +303,17 @@ function cancelSession() {
   inputGroup.classList.add("hidden");
 
   if (createdSessionId) {
-    console.log("Cancelled Session of code: " + createdSessionId);
-    socket.send(
-      JSON.stringify({ type: "cancelSession", code: createdSessionId }),
-    );
+    var created = createdSessionId;
     createdSessionId = null;
+    console.log("Cancelled Session of code: " + created);
+    if (socket && socket.readyState === 1)
+      socket.send(JSON.stringify({ type: "cancelSession", code: created }));
   } else if (joinedSessionId) {
-    console.log("Left Session of code: " + joinedSessionId);
-    socket.send(
-      JSON.stringify({ type: "leaveSession", code: joinedSessionId }),
-    );
+    var joined = joinedSessionId;
     joinedSessionId = null;
+    console.log("Left Session of code: " + joined);
+    if (socket && socket.readyState === 1)
+      socket.send(JSON.stringify({ type: "leaveSession", code: joined }));
   }
   if (typeof placeAccount === "function") placeAccount();
 }

@@ -25,6 +25,11 @@ function accountApi(path, body) {
   }).then(function (res) {
     return res.json().catch(function () { return {}; }).then(function (data) {
       data.ok = res.ok;
+      if (!res.ok && data.error === "auth") {
+        setAccountToken("");
+        accountProfile = null;
+        renderAccount();
+      }
       return data;
     });
   });
@@ -381,8 +386,8 @@ onSocketMessage = async function (event) {
     takeRewards(data);
     return;
   }
-  if (data.type === "sessionDeleted" || data.type === "sessionUnready") {
-    if (data.type === "sessionDeleted") clearHold();
+  if (data.type === "sessionDeleted" || data.type === "sessionExpired" || data.type === "sessionUnready") {
+    if (data.type === "sessionDeleted" || data.type === "sessionExpired") clearHold();
     betState = null;
     betWanted = false;
     betDismissed = false;
