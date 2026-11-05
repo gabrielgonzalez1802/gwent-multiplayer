@@ -202,34 +202,52 @@ async function onSocketMessage(event) {
 
     // Game - Oponent plays card
     case "play":
-      const card = player_op.hand.cards.find(
-        (c) => c.filename === data.card.filename,
-      );
-
-      const splitRowName = data.row.split("-");
-      let row;
-      if (splitRowName.length > 1) {
-        const targetRow = splitRowName[0] === "self" ? "target" : "self";
-        row = board.row.find(
-          (r) => r.elem_parent.id === `${targetRow}-${splitRowName[1]}`,
+      var medicPlay = data.card && Array.isArray(data.card.abilities) && data.card.abilities.indexOf("medic") !== -1;
+      if (medicPlay) game.medicOpen = true;
+      try {
+        const card = player_op.hand.cards.find(
+          (c) => c.filename === data.card.filename,
         );
-      } else {
-        row = data.row;
+
+        const splitRowName = data.row.split("-");
+        let row;
+        if (splitRowName.length > 1) {
+          const targetRow = splitRowName[0] === "self" ? "target" : "self";
+          row = board.row.find(
+            (r) => r.elem_parent.id === `${targetRow}-${splitRowName[1]}`,
+          );
+        } else {
+          row = data.row;
+        }
+
+        if (!card) throw new Error("card");
+
+        if (data.card.filename === "decoy") {
+          const replacedCard = row && row.cards.find(
+            (bc) => bc.filename === data.target.filename,
+          );
+          if (!replacedCard) throw new Error("decoy");
+
+          board.moveTo(replacedCard, player_op.hand, row);
+        }
+
+        if (row === "weather") await player_op.playCard(card, row);
+        else if (data.card.filename === "scorch")
+          await player_op.playScorch(card);
+        else {
+          if (!row) throw new Error("row");
+          await player_op.playCardToRow(card, row);
+        }
+      } catch (err) {
+        console.error(err);
+        if (game && player_op && game.currPlayer === player_op && !player_op.passed) player_op.endTurn();
       }
+      game.medicOpen = false;
+      game.pendingMedic = null;
+      break;
 
-      if (data.card.filename === "decoy") {
-        const replacedCard = row.cards.find(
-          (bc) => bc.filename === data.target.filename,
-        );
-        if (!replacedCard) return;
-
-        board.moveTo(replacedCard, player_op.hand, row);
-      }
-
-      if (row === "weather") await player_op.playCard(card, row);
-      else if (data.card.filename === "scorch")
-        await player_op.playScorch(card);
-      else await player_op.playCardToRow(card, row);
+    case "medicDraw":
+      if (game && game.medicOpen) game.pendingMedic = data.card || "";
       break;
 
     // Game - Oponent pass
@@ -459,12 +477,19 @@ class Player {
 
   // Shows a preview of the card being played, plays it to the board and ends the turn
   async playCardAction(card, action) {
+    var holder = this;
     clearTurnClock();
-    ui.showPreviewVisuals(card);
-    await sleep(1000);
-    ui.hidePreview(card);
-    await action();
-    this.endTurn();
+    try {
+      if (card) {
+        ui.showPreviewVisuals(card);
+        await sleep(1000);
+        ui.hidePreview(card);
+      }
+      await action();
+    } catch (err) {
+      console.error(err);
+    }
+    if (game.currPlayer === holder && !holder.passed) holder.endTurn();
   }
 
   // Handles end of turn visuals and behavior the notifies the game
@@ -895,10 +920,12 @@ class Row extends CardContainer {
       mardroeme: 0,
     };
     this.elem.addEventListener("click", (event) => {
+      if (!playingHere(this, "cards")) return;
       if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
       ui.selectRow(this);
     }, true);
     this.elem_special.addEventListener("click", (event) => {
+      if (!playingHere(this, "special")) return;
       if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
       ui.selectRow(this);
     }, false);
@@ -1133,6 +1160,7 @@ class Weather extends CardContainer {
       this.types[key].rows = [board.row[i], board.row[5 - i++]];
 
     this.elem.addEventListener("click", (event) => {
+      if (!playingHere(this, "cards")) return;
       if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
       ui.selectRow(this);
     }, false);
@@ -1373,6 +1401,8 @@ class Game {
 
     this.randomRespawn = false;
     this.doubleSpyPower = false;
+    this.medicOpen = false;
+    this.pendingMedic = null;
 
     weather.reset();
     board.row.forEach((r) => r.reset());
@@ -1415,6 +1445,8 @@ class Game {
 
   // Initializes player abilities, hands and waits for cointoss
   async startGame() {
+    this.medicOpen = false;
+    this.pendingMedic = null;
     readyButtonElem.classList.add("hidden");
     endChoice = "";
     oppEndChoice = "";
@@ -2195,6 +2227,7 @@ class UI {
     );
 
     if (this.previewCard.name === "Decoy") return;
+    if (handOwns(this.previewCard) && !rowAccepts(this.previewCard, row)) return;
 
     netSend(
       JSON.stringify({
@@ -2209,15 +2242,16 @@ class UI {
     let holder = card.holder;
     this.hidePreview();
     this.enablePlayer(false);
-    if (card.name === "Scorch") {
-      this.hidePreview();
-      await ability_dict["scorch"].activated(card);
-    } else if (card.name === "Decoy") {
-      return;
-    } else {
-      await board.moveTo(card, row, card.holder.hand);
+    try {
+      if (card.name === "Scorch") {
+        await ability_dict["scorch"].activated(card);
+      } else if (card.name !== "Decoy") {
+        await board.moveTo(card, row, card.holder.hand);
+      }
+    } catch (err) {
+      console.error(err);
     }
-    holder.endTurn();
+    if (game.currPlayer === holder && !holder.passed) holder.endTurn();
   }
 
   // Called when the client cancels out of a card-preview
@@ -2647,7 +2681,7 @@ class Carousel {
       actionString === "(c, i) => wrapper.card=c.cards[i]" ||
       actionString === "(c,i) => newCard = c.cards[i]"
     ) {
-      setTimeout(() => {
+      if (resp && resp.filename) setTimeout(() => {
         netSend(JSON.stringify({ type: "medicDraw", card: resp.filename }));
       }, 1000);
     } else if (actionString.includes("board.toWeather")) {
@@ -5146,6 +5180,35 @@ function handOwns(card) {
   return !!(card && card.holder && card.holder.hand && card.holder.hand.cards.indexOf(card) !== -1);
 }
 
+function unitRowOk(cardRow, destRow) {
+  if (cardRow === "agile") return destRow === "close" || destRow === "ranged";
+  return cardRow === destRow;
+}
+
+function rowAccepts(card, row) {
+  if (!card || !row || !board) return false;
+  if (card.faction === "weather") return row === weather;
+  if (card.name === "Scorch") return board.row.indexOf(row) !== -1;
+  if (card.isSpecial && card.isSpecial()) {
+    var at = board.row.indexOf(row);
+    return at >= 3 && !row.special;
+  }
+  if (card.row === "agile") {
+    return row === board.getRow(card, "close", card.holder) || row === board.getRow(card, "ranged", card.holder);
+  }
+  if (!unitRowOk(card.row, row.type)) return false;
+  return row === board.getRow(card, card.row, card.holder);
+}
+
+function playingHere(row, slot) {
+  var card = ui && ui.previewCard;
+  if (!card || !handOwns(card) || card.name === "Decoy") return true;
+  if (!rowAccepts(card, row)) return false;
+  if (card.name === "Scorch" || card.faction === "weather") return true;
+  if (card.isSpecial && card.isSpecial()) return slot === "special";
+  return slot === "cards";
+}
+
 function cardClickAction(card, preview, turn) {
   if (turn && handOwns(card)) return "play";
   if (turn && preview && preview.name === "Decoy" && card && card.isUnit && card.isUnit()) return "play";
@@ -5166,6 +5229,8 @@ function cardClickAction(card, preview, turn) {
   if (cardClickAction(board, decoy, true) !== "play") throw new Error("clic senuelo");
   if (cardClickAction(hero, decoy, true) !== "look") throw new Error("clic heroe");
   if (cardClickAction(board, null, false) !== "look") throw new Error("clic turno rival");
+  if (unitRowOk("close", "siege") || !unitRowOk("close", "close")) throw new Error("fila");
+  if (unitRowOk("agile", "siege") || !unitRowOk("agile", "ranged") || !unitRowOk("agile", "close")) throw new Error("agil");
 })();
 
 function myKeyTurn() {

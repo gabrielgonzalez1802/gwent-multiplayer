@@ -1,5 +1,42 @@
 "use strict"
 
+function sendMedicDraw(card) {
+  var name = card && card.filename ? card.filename : "";
+  setTimeout(function () {
+    netSend(JSON.stringify({ type: "medicDraw", card: name }));
+  }, 1500);
+}
+
+function waitMedicDraw(grave) {
+  return new Promise(function (resolve) {
+    var done = false;
+    function finish(card) {
+      if (done) return;
+      done = true;
+      game.pendingMedic = null;
+      socket.removeEventListener("message", handleMessage);
+      resolve(card || null);
+    }
+    function take(name) {
+      var drawn = grave && grave.cards ? grave.cards.filter(function (c) { return c.filename === name; })[0] : null;
+      finish(drawn || null);
+    }
+    function handleMessage(event) {
+      var data;
+      try { data = JSON.parse(event.data); } catch (e) { return; }
+      if (data.type !== "medicDraw") return;
+      take(data.card);
+    }
+    if (game.pendingMedic !== undefined && game.pendingMedic !== null) {
+      var early = game.pendingMedic;
+      game.pendingMedic = null;
+      take(early);
+      return;
+    }
+    socket.addEventListener("message", handleMessage);
+  });
+}
+
 var ability_dict = {
 	clear: {
 		name: "Clear Weather",
@@ -132,30 +169,16 @@ var ability_dict = {
 			if (card.holder.controller instanceof ControllerAI) {
 				wrapper.card = card.holder.controller.medic(card, grave);
 			} else if (card.holder.controller instanceof ControllerOponent) {
-				// Wait for the oponent to choose which card to revive
-				wrapper.card = await new Promise((resolve) => {
-					const handleMessage = async (event) => {
-						const data = JSON.parse(event.data);
-						if (data.type === "medicDraw") {
-							const drawnCard = grave.cards.filter(c => c.filename === data.card)[0]
-							if (drawnCard) {
-								resolve(drawnCard);
-								return;
-							}
-						}
-					}
-					socket.addEventListener('message', handleMessage);
-				});
+				wrapper.card = await waitMedicDraw(grave);
 			} else if (game.randomRespawn) {
 				wrapper.card = grave.findCardsRandom(c => c.isUnit())[0];
-				setTimeout(() => {
-        	netSend(JSON.stringify({ type: "medicDraw", card: wrapper.card.filename }));
-					// too long? needed to make sure the opponent's websocket waits for this event to avoid breaking
-      	}, 3000);
+				sendMedicDraw(wrapper.card);
 			} else {
 				await ui.queueCarousel(card.holder.grave, 1, (c, i) => wrapper.card=c.cards[i], c => c.isUnit(), true);
+				sendMedicDraw(wrapper.card);
 			}
 			let res = wrapper.card;
+			if (!res) return;
 			grave.removeCard(res);
 			grave.addCard(res);
 			await res.animate("medic");
@@ -341,19 +364,7 @@ var ability_dict = {
 			if (card.holder.controller instanceof ControllerAI) {
 				newCard = card.holder.controller.medic(card, card.holder.grave);
 			} else if (card.holder.controller instanceof ControllerOponent) {
-				newCard = await new Promise((resolve) => {
-					const handleMessage = async (event) => {
-						const data = JSON.parse(event.data);
-
-						if (data.type === "medicDraw") {
-							const drawnCard = player_op.grave.cards.filter(c => c.isUnit() && c.filename === data.card)[0]
-							if (drawnCard) {
-								resolve(drawnCard);
-							}
-						}
-					}
-					socket.addEventListener('message', handleMessage);
-				});
+				newCard = await waitMedicDraw(player_op.grave);
 			} else {
 				Carousel.curr.exit();
 				await ui.queueCarousel(card.holder.grave, 1, (c,i) => newCard = c.cards[i], c => c.isUnit(), false, false);
