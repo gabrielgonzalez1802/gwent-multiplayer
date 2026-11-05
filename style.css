@@ -246,6 +246,58 @@ html {
 	box-shadow: 0 0 8px goldenrod;
 }
 
+#chat-toast {
+	position: fixed;
+	z-index: 4200;
+	right: 12px;
+	bottom: 12px;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	width: min(320px, calc(100vw - 24px));
+	padding: 10px 12px;
+	font-size: 14px;
+	line-height: 1.35;
+	color: #eee;
+	background: rgba(0, 0, 0, 0.9);
+	border: 1px solid goldenrod;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	pointer-events: auto;
+}
+
+#chat-toast.hide {
+	display: none;
+}
+
+#chat-toast-who {
+	margin: 0 0 4px;
+	color: #c8b48a;
+	font-weight: 700;
+}
+
+#chat-toast-text {
+	margin: 0;
+	word-wrap: break-word;
+	white-space: pre-wrap;
+}
+
+#chat-toast-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+#chat-toast-actions button {
+	height: 32px;
+	padding: 0 10px;
+	font-size: 14px;
+	color: #eee;
+	background: rgb(20, 20, 20);
+	border: 1px solid rgb(90, 70, 30);
+	cursor: pointer;
+}
+
 #chat-panel {
 	position: fixed;
 	z-index: 4100;

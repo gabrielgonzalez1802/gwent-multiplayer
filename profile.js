@@ -389,7 +389,11 @@ function playPack(files, done) {
   var button = document.getElementById("pack-done");
   var list = document.getElementById("pack-list");
   box.innerHTML = "";
-  if (list) list.textContent = packFactionLine(files);
+  if (list) {
+    var count = files.length === 1 ? t("bet_one") : tf("bet_many", { n: files.length });
+    var factions = packFactionLine(files);
+    list.textContent = factions ? count + "\n" + factions : count;
+  }
   stage.classList.remove("open");
   button.classList.add("hide");
   var mid = (files.length - 1) / 2;
@@ -472,8 +476,7 @@ function takeRewards(data) {
   else if (data.note === "forfeit-loss") text = tf("bet_forfeit_loss", { cards: cards });
   else if (data.note === "dispute") text = t("bet_dispute");
   else if (data.note === "draw") text = t("bet_draw");
-  if (data.n > 1) text = (text ? text + " " : "") + tf("pack_got_n", { n: data.n });
-  else if (data.pack) text = (text ? text + " " : "") + t("pack_got");
+  if (data.pack) text = (text ? text + " " : "") + t("pack_got");
   else text = (text ? text + " " : "") + t("cpu_none");
   showReward(text);
 }
@@ -719,6 +722,21 @@ function chatWho() {
   return name ? String(name).slice(0, 16) : t("you");
 }
 
+function hideChatToast() {
+  var toast = document.getElementById("chat-toast");
+  if (toast) toast.classList.add("hide");
+}
+
+function showChatToast(name, text) {
+  var toast = document.getElementById("chat-toast");
+  var who = document.getElementById("chat-toast-who");
+  var body = document.getElementById("chat-toast-text");
+  if (!toast || !who || !body) return;
+  who.textContent = name;
+  body.textContent = text;
+  toast.classList.remove("hide");
+}
+
 function syncChat() {
   var btn = document.getElementById("chat-open");
   var panel = document.getElementById("chat-panel");
@@ -726,6 +744,7 @@ function syncChat() {
   var on = gameMode !== "offline" && (createdSessionId || joinedSessionId);
   if (!on) {
     panel.classList.add("hide");
+    hideChatToast();
     document.getElementById("chat-log").textContent = "";
     btn.classList.remove("unread");
     var navBtn = document.getElementById("nav-open");
@@ -756,6 +775,7 @@ function takeChat(data) {
   pushChat(name, text, false);
   var panel = document.getElementById("chat-panel");
   if (panel.classList.contains("hide")) {
+    showChatToast(name, text);
     document.getElementById("chat-open").classList.add("unread");
     var navBtn = document.getElementById("nav-open");
     if (navBtn) navBtn.classList.add("unread");
@@ -776,6 +796,7 @@ document.getElementById("chat-open").addEventListener("click", function (event) 
   event.stopPropagation();
   var panel = document.getElementById("chat-panel");
   panel.classList.toggle("hide");
+  hideChatToast();
   document.getElementById("chat-open").classList.remove("unread");
   var navBtn = document.getElementById("nav-open");
   if (navBtn) navBtn.classList.remove("unread");
@@ -789,6 +810,17 @@ document.getElementById("chat-close").addEventListener("click", function (event)
   event.stopPropagation();
   document.getElementById("chat-panel").classList.add("hide");
   document.getElementById("chat-emoji-box").classList.add("hide");
+});
+
+document.getElementById("chat-toast-close").addEventListener("click", function (event) {
+  event.stopPropagation();
+  hideChatToast();
+});
+
+document.getElementById("chat-toast-open").addEventListener("click", function (event) {
+  event.stopPropagation();
+  hideChatToast();
+  document.getElementById("chat-open").click();
 });
 
 ["\uD83D\uDE00","\uD83D\uDE03","\uD83D\uDE04","\uD83D\uDE01","\uD83D\uDE06","\uD83D\uDE05","\uD83E\uDD23","\uD83D\uDE02","\uD83D\uDE42","\uD83D\uDE09","\uD83D\uDE0A","\uD83D\uDE07","\uD83E\uDD70","\uD83D\uDE0D","\uD83E\uDD29","\uD83D\uDE18","\uD83D\uDE17","\uD83D\uDE1A","\uD83D\uDE19","\uD83D\uDE0B","\uD83D\uDE1B","\uD83D\uDE1C","\uD83E\uDD2A","\uD83D\uDE1D","\uD83E\uDD11","\uD83E\uDD17","\uD83E\uDD2D","\uD83E\uDD2B","\uD83E\uDD14","\uD83E\uDD10","\uD83E\uDD28","\uD83D\uDE10","\uD83D\uDE11","\uD83D\uDE36","\uD83D\uDE0F","\uD83D\uDE12","\uD83D\uDE44","\uD83D\uDE2C","\uD83D\uDE0C","\uD83D\uDE14","\uD83D\uDE2A","\uD83E\uDD24","\uD83D\uDE34","\uD83D\uDE37","\uD83E\uDD12","\uD83E\uDD15","\uD83E\uDD22","\uD83E\uDD2E","\uD83E\uDD75","\uD83E\uDD76","\uD83E\uDD74","\uD83D\uDE35","\uD83E\uDD2F","\uD83E\uDD20","\uD83E\uDD73","\uD83D\uDE0E","\uD83E\uDD13","\uD83E\uDDD0","\uD83D\uDE15","\uD83D\uDE1F","\uD83D\uDE41","\u2639\uFE0F","\uD83D\uDE2E","\uD83D\uDE2F","\uD83D\uDE32","\uD83D\uDE33","\uD83E\uDD7A","\uD83D\uDE26","\uD83D\uDE27","\uD83D\uDE28","\uD83D\uDE30","\uD83D\uDE25","\uD83D\uDE22","\uD83D\uDE2D","\uD83D\uDE31","\uD83D\uDE16","\uD83D\uDE23","\uD83D\uDE1E","\uD83D\uDE13","\uD83D\uDE29","\uD83D\uDE2B","\uD83E\uDD71","\uD83D\uDE24","\uD83D\uDE21","\uD83D\uDE20","\uD83E\uDD2C","\uD83D\uDE08","\uD83D\uDC7F","\uD83D\uDC80","\u2620\uFE0F","\uD83D\uDCA9","\uD83E\uDD21","\uD83D\uDC79","\uD83D\uDC7A","\uD83D\uDC7B","\uD83D\uDC7D","\uD83D\uDC7E","\uD83E\uDD16","\uD83D\uDC4D","\uD83D\uDC4E","\uD83D\uDC4F","\uD83D\uDE4F","\uD83D\uDC4C","\u270C\uFE0F","\uD83E\uDD1E","\uD83E\uDD1F","\uD83E\uDD18","\uD83D\uDC4B","\uD83E\uDD19","\uD83D\uDCAA","\uD83E\uDD1B","\uD83E\uDD1C","\u270B","\uD83D\uDD90\uFE0F","\u2764\uFE0F","\uD83E\uDDE1","\uD83D\uDC9B","\uD83D\uDC9A","\uD83D\uDC99","\uD83D\uDC9C","\uD83D\uDDA4","\uD83E\uDD0D","\uD83D\uDC94","\uD83D\uDC95","\uD83D\uDC96","\uD83D\uDC97","\uD83D\uDC9E","\uD83D\uDC93","\uD83D\uDC9D","\uD83D\uDC98","\uD83D\uDC9F","\uD83D\uDC36","\uD83D\uDC31","\uD83D\uDC2D","\uD83D\uDC30","\uD83E\uDD8A","\uD83D\uDC3B","\uD83D\uDC3C","\uD83D\uDC28","\uD83D\uDC2F","\uD83E\uDD81","\uD83D\uDC2E","\uD83D\uDC37","\uD83D\uDC38","\uD83D\uDC35","\uD83D\uDC14","\uD83D\uDC27","\uD83D\uDC26","\uD83E\uDD86","\uD83E\uDD89","\uD83D\uDC3A","\uD83E\uDD84","\uD83D\uDC1D","\uD83E\uDD8B","\uD83D\uDC22","\uD83D\uDC0D","\uD83D\uDC19","\uD83E\uDD80","\uD83D\uDC2C","\uD83D\uDC33","\uD83E\uDD88","\uD83C\uDF4E","\uD83C\uDF4A","\uD83C\uDF4B","\uD83C\uDF4C","\uD83C\uDF49","\uD83C\uDF47","\uD83C\uDF53","\uD83C\uDF52","\uD83C\uDF51","\uD83C\uDF4D","\uD83C\uDF55","\uD83C\uDF54","\uD83C\uDF5F","\uD83C\uDF2D","\uD83C\uDF7F","\uD83C\uDF69","\uD83C\uDF6A","\uD83C\uDF82","\uD83C\uDF70","\u2615","\uD83C\uDF7A","\uD83C\uDF77","\uD83E\uDD42","\uD83C\uDF7B","\u26BD","\uD83C\uDFC0","\uD83C\uDFC8","\u26BE","\uD83C\uDFBE","\uD83C\uDFD0","\uD83C\uDFB1","\uD83C\uDFAE","\uD83D\uDD79\uFE0F","\uD83C\uDFB2","\u265F\uFE0F","\uD83C\uDFAF","\uD83C\uDFB3","\uD83C\uDFC6","\uD83E\uDD47","\uD83E\uDD48","\uD83E\uDD49","\uD83C\uDFC5","\uD83C\uDF96\uFE0F","\uD83C\uDFAA","\uD83C\uDFAD","\uD83C\uDFA8","\uD83C\uDFAC","\uD83C\uDFA4","\uD83C\uDFA7","\uD83C\uDFB5","\uD83C\uDFB6","\uD83D\uDE97","\uD83D\uDE95","\uD83D\uDE8C","\uD83C\uDFCE\uFE0F","\uD83D\uDE93","\uD83D\uDE91","\uD83D\uDE92","\u2708\uFE0F","\uD83D\uDE80","\uD83D\uDE81","\u26F5","\uD83C\uDFE0","\uD83C\uDFF0","\uD83D\uDDFD","\uD83D\uDDFC","\uD83C\uDFA1","\uD83C\uDFA2","\u26FA","\uD83C\uDF0B","\uD83C\uDFD6\uFE0F","\uD83D\uDD25","\u2728","\u2B50","\uD83C\uDF1F","\uD83D\uDCAB","\uD83D\uDCA5","\uD83D\uDCAF","\uD83D\uDCA2","\uD83D\uDCA4","\uD83C\uDF89","\uD83C\uDF8A","\uD83C\uDF81","\uD83C\uDF88","\uD83D\uDC51","\uD83D\uDC8E","\uD83D\uDCB0","\uD83D\uDCB5","\u2694\uFE0F","\uD83D\uDEE1\uFE0F","\uD83C\uDFF9","\uD83D\uDD2E","\uD83D\uDCFF","\uD83D\uDCDC","\uD83D\uDD6F\uFE0F","\uD83C\uDF19","\u2600\uFE0F","\u26A1","\u2744\uFE0F","\uD83C\uDF08","\uD83C\uDF40","\uD83C\uDF38","\uD83C\uDF39","\uD83C\uDF3B","\uD83C\uDF32","\u2705","\u274C","\u26A0\uFE0F","\u2753","\u2757","\uD83D\uDCAC","\uD83D\uDC40","\uD83D\uDCA1","\uD83D\uDCCC","\uD83D\uDD12","\uD83D\uDD11","\uD83D\uDD14","\u23F0","\uD83D\uDCF1","\uD83D\uDCBB","\uD83D\uDCF7"].forEach(function (face) {

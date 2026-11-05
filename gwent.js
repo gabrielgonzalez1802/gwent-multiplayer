@@ -1809,6 +1809,7 @@ class Game {
     ui.toggleMusic_elem.classList.add("music-customization");
     this.endScreen.classList.add("hide");
     customizationElem.classList.remove("hide");
+    customizationElem.classList.remove("noclick");
     customizationElem.style.display = "";
     gameStartControlsElem.classList.remove("hide");
     if (createdSessionId || joinedSessionId) readyButtonElem.classList.remove("hidden");
@@ -2438,10 +2439,12 @@ class UI {
 
   // Displays a cancellable Carousel for all cards in a container
   async viewCardsInContainer(container, action) {
+    if (!container || !container.cards || !container.cards.length) return;
     action = action ? action : () => this.cancel();
 
     await this.queueCarousel(container, 1, action, () => true, false, true);
     netSend(JSON.stringify({ type: "containerClosed" }));
+    restoreBoardClicks();
   }
 
   // Displays a Carousel menu of filtered container items that match the predicate.
@@ -2655,7 +2658,7 @@ class Carousel {
     }
 
     this.elem.classList.remove("hide");
-    ui.enablePlayer(true);
+    if (!this.bExit) ui.enablePlayer(true);
     tocar("explaining", false);
     if (typeof onTutorialCarousel === "function") onTutorialCarousel();
   }
@@ -2672,7 +2675,7 @@ class Carousel {
     (event || window.event).stopPropagation();
     --this.count;
     if (this.isLastSelection()) this.elem.classList.add("hide");
-    if (this.count <= 0) ui.enablePlayer(false);
+    if (this.count <= 0 && !this.bExit) ui.enablePlayer(false);
 
     const actionString = this.action.toString();
     tocar("redraw", false);
@@ -2716,7 +2719,7 @@ class Carousel {
       tocar("discard", false);
       this.exit();
     }
-    ui.enablePlayer(true);
+    restoreBoardClicks();
   }
 
   // Returns true if there are no more cards to view or select
@@ -2762,6 +2765,7 @@ class Carousel {
     this.elem.classList.add("hide");
     Carousel.clearCurrent();
     ui.quitCarousel();
+    if (this.bExit) restoreBoardClicks();
     if (tutorialOn && tutorialPhase === "match" && !tutorialLive) enterTutorialLive();
   }
 
@@ -5238,6 +5242,18 @@ function myKeyTurn() {
   if (game.currPlayer !== player_me || player_me.passed) return false;
   var main = document.getElementsByTagName("main")[0];
   return !!(main && !main.classList.contains("noclick") && player_me.hand);
+}
+
+function restoreBoardClicks() {
+  if (typeof game === "undefined" || !game || typeof player_me === "undefined" || !player_me || !ui) {
+    if (ui) ui.enablePlayer(false);
+    return;
+  }
+  var mine =
+    game.currPlayer === player_me &&
+    !player_me.passed &&
+    !(game.endScreen && !game.endScreen.classList.contains("hide"));
+  ui.enablePlayer(!!mine);
 }
 
 function playTargets() {

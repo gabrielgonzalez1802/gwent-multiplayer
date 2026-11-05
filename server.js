@@ -381,19 +381,20 @@ async function onPlayerMessage(ws, message) {
       if (ws.sessionCode && sessions[ws.sessionCode]) {
         const session = sessions[ws.sessionCode];
         account.matchBegan(session);
-        if (!sessions[ws.sessionCode]?.firstPlayer) {
-          const firstPlayer =
-            session.players[Math.floor(Math.random() * session.players.length)]
-              .playerId;
-          sessions[ws.sessionCode].firstPlayer = firstPlayer;
-        }
-        console.log("firstPlayer = ", sessions[ws.sessionCode].firstPlayer);
+        // A rematch reuses the same room. Without this, sendStart stays blocked after the first game.
+        clearMatchTimers(session);
+        session.started = false;
+        session.redrawDone = {};
+        session.firstPlayer =
+          session.players[Math.floor(Math.random() * session.players.length)]
+            .playerId;
+        console.log("firstPlayer = ", session.firstPlayer);
 
         session.players.forEach((player) => {
           player.send(
             JSON.stringify({
               type: "coinToss",
-              player: sessions[ws.sessionCode].firstPlayer,
+              player: session.firstPlayer,
             }),
           );
         });
