@@ -5,6 +5,7 @@ const vm = require("vm");
 const mysql = require("mysql2/promise");
 
 const { DB, mysqlOptions } = require("./db-config");
+const { LOGIN_TTL_MS, LOGIN_TTL_MIN } = require("./server-config");
 
 const FACTIONS = ["realms", "nilfgaard", "monsters", "scoiatael", "skellige"];
 
@@ -26,17 +27,6 @@ cards.forEach((card) => {
 function isHero(card) {
   return String(card.ability || "").split(" ").indexOf("hero") !== -1;
 }
-
-const weakRewardPool = [];
-cards.forEach((card) => {
-  if (card.row === "leader") return;
-  if (card.deck === "special" || card.deck === "weather") return;
-  if (isHero(card)) return;
-  if (!(Number(card.count) > 0)) return;
-  if (Number(card.strength) > 6) return;
-  for (let i = 0; i < Number(card.count); i++) weakRewardPool.push(card.filename);
-});
-if (!weakRewardPool.length) throw new Error("premio debil vacio");
 
 function shuffle(list) {
   for (let i = list.length - 1; i > 0; i--) {
@@ -144,42 +134,175 @@ checkStarters();
 
 let pool = null;
 const cpuMatches = new Map();
+const rateHits = new Map();
+
+function clientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.trim()) return fwd.split(",")[0].trim().slice(0, 64);
+  return String((req.socket && req.socket.remoteAddress) || "").slice(0, 64);
+}
+
+// ponytail: anti-bot en memoria. Si el proceso se reinicia, se vacia. Un Redis aguantaria varios nodos.
+function tooMany(key, limit, windowMs) {
+  const now = Date.now();
+  let row = rateHits.get(key);
+  if (!row || now - row.t > windowMs) {
+    rateHits.set(key, { n: 1, t: now });
+    return false;
+  }
+  row.n += 1;
+  return row.n > limit;
+}
+
+setInterval(function () {
+  const now = Date.now();
+  rateHits.forEach(function (row, key) {
+    if (now - row.t > 3600000) rateHits.delete(key);
+  });
+}, 300000).unref();
 
 function randomFilename() {
   return packPool[Math.floor(Math.random() * packPool.length)];
 }
 
-function rewardFilename(result) {
-  const bag = result === "lose" || result === "draw" ? weakRewardPool : packPool;
+function cardRarity(card) {
+  if (card.row === "leader") return "leader";
+  if (isHero(card)) return "hero";
+  if (card.deck === "special" || card.deck === "weather") return "special";
+  const str = Number(card.strength) || 0;
+  if (str >= 10) return "high";
+  if (str >= 7) return "mid";
+  return "low";
+}
+
+// Probabilidades del sobre (suma 100). Gana/pierde/empate usan las mismas rarezas.
+const WIN_RARITY = {
+  low: 48,
+  mid: 24,
+  special: 14,
+  high: 8,
+  hero: 5,
+  leader: 1,
+};
+
+const rarityPools = {
+  low: [],
+  mid: [],
+  special: [],
+  high: [],
+  hero: [],
+  leader: [],
+};
+
+cards.forEach((card) => {
+  const copies = Number(card.count) || 0;
+  const n = copies > 0 ? copies : card.row === "leader" ? 1 : 0;
+  if (!n) return;
+  const rarity = cardRarity(card);
+  if (!rarityPools[rarity]) return;
+  for (let i = 0; i < n; i++) rarityPools[rarity].push(card.filename);
+});
+
+Object.keys(rarityPools).forEach((key) => {
+  if (!rarityPools[key].length) throw new Error("rareza vacia " + key);
+});
+
+function pickFrom(bag) {
   return bag[Math.floor(Math.random() * bag.length)];
 }
 
+function pickWinCard() {
+  let total = 0;
+  const keys = Object.keys(WIN_RARITY);
+  for (let i = 0; i < keys.length; i++) {
+    if (rarityPools[keys[i]].length) total += WIN_RARITY[keys[i]];
+  }
+  if (!total) return randomFilename();
+  let roll = Math.random() * total;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (!rarityPools[key].length) continue;
+    roll -= WIN_RARITY[key];
+    if (roll < 0) return pickFrom(rarityPools[key]);
+  }
+  return pickFrom(rarityPools.low);
+}
+
+function rewardFilename() {
+  // Gana, pierde y empate usan las mismas rarezas; solo cambia cuantas cartas da el sobre.
+  return pickWinCard();
+}
+
+// Cartas dentro de cada sobre: 1..5 con peso.
+const CARDS_PER_PACK_WEIGHTS = [
+  [1, 8],
+  [2, 22],
+  [3, 35],
+  [4, 23],
+  [5, 12],
+];
+
+// Sobres al ganar: 1..3 con peso. Pierde/empate: 0 o 1.
+const PACKS_ON_WIN_WEIGHTS = [
+  [1, 55],
+  [2, 30],
+  [3, 15],
+];
+
+function pickWeightedCount(weights) {
+  let total = 0;
+  for (let i = 0; i < weights.length; i++) total += weights[i][1];
+  let roll = Math.random() * total;
+  for (let i = 0; i < weights.length; i++) {
+    roll -= weights[i][1];
+    if (roll < 0) return weights[i][0];
+  }
+  return weights[weights.length - 1][0];
+}
+
+function cardsPerPack() {
+  return pickWeightedCount(CARDS_PER_PACK_WEIGHTS);
+}
+
 function cpuRewardCount(result) {
-  if (result === "win") return 1 + Math.floor(Math.random() * 3);
+  if (result === "win") return pickWeightedCount(PACKS_ON_WIN_WEIGHTS);
   if (result === "lose" || result === "draw") return Math.random() < 0.5 ? 1 : 0;
   return 0;
 }
 
 function checkCpuReward() {
-  for (let i = 0; i < 40; i++) {
+  const seenRarity = {};
+  for (let i = 0; i < 80; i++) {
     const win = cpuRewardCount("win");
     const lose = cpuRewardCount("lose");
+    const cards = cardsPerPack();
     if (win < 1 || win > 3) throw new Error("cpu premio gana");
     if (lose !== 0 && lose !== 1) throw new Error("cpu premio pierde");
-    const card = cardByFile[rewardFilename("lose")].card;
-    if (isHero(card) || card.row === "leader" || Number(card.strength) > 6) throw new Error("cpu premio no debil");
-    if (card.deck === "special" || card.deck === "weather") throw new Error("cpu premio no debil");
+    if (cards < 1 || cards > 5) throw new Error("cartas por sobre");
   }
+  for (let i = 0; i < 400; i++) {
+    const card = cardByFile[rewardFilename()].card;
+    seenRarity[cardRarity(card)] = (seenRarity[cardRarity(card)] || 0) + 1;
+  }
+  if (!seenRarity.low || !seenRarity.mid || !seenRarity.special) throw new Error("premio rareza");
+  if ((seenRarity.hero || 0) + (seenRarity.leader || 0) > seenRarity.low) throw new Error("premio raro");
+  if ((seenRarity.leader || 0) > 40) throw new Error("premio lider");
 }
 
 checkCpuReward();
 
 async function grantCpuCards(userId, result) {
-  const n = cpuRewardCount(result);
-  if (!n) return { pack: false, n: 0 };
-  const kind = result === "lose" || result === "draw" ? "weak" : "full";
-  await pool.query("INSERT INTO packs (user_id, opened, n, kind) VALUES (?,0,?,?)", [userId, n, kind]);
-  return { pack: true, n: n };
+  const packs = cpuRewardCount(result);
+  if (!packs) return { pack: false, n: 0 };
+  for (let i = 0; i < packs; i++) {
+    const cards = cardsPerPack();
+    await pool.query("INSERT INTO packs (user_id, opened, n, kind) VALUES (?,0,?,?)", [
+      userId,
+      cards,
+      "full",
+    ]);
+  }
+  return { pack: true, n: packs };
 }
 
 function hashPass(password, salt) {
@@ -223,8 +346,13 @@ async function init() {
     "CREATE TABLE IF NOT EXISTS login_tokens (" +
       "token VARCHAR(64) PRIMARY KEY," +
       "user_id INT NOT NULL," +
+      "seen_at DATETIME NOT NULL," +
       "FOREIGN KEY (user_id) REFERENCES users(id)" +
       ") ENGINE=InnoDB",
+  );
+  await addTokenColumn("seen_at", "DATETIME NULL");
+  await pool.query(
+    "UPDATE login_tokens SET seen_at=UTC_TIMESTAMP() WHERE seen_at IS NULL",
   );
   await pool.query(
     "CREATE TABLE IF NOT EXISTS owned (" +
@@ -258,6 +386,28 @@ async function addPackColumn(name, def) {
     if (!err || err.code !== "ER_DUP_FIELDNAME") throw err;
   }
 }
+
+async function addTokenColumn(name, def) {
+  try {
+    await pool.query("ALTER TABLE login_tokens ADD COLUMN " + name + " " + def);
+  } catch (err) {
+    if (!err || err.code !== "ER_DUP_FIELDNAME") throw err;
+  }
+}
+
+function sweepLoginTokens() {
+  if (!pool) return;
+  // LOGIN_TTL_MIN ya viene acotado a entero en server-config.
+  pool
+    .query(
+      "DELETE FROM login_tokens WHERE seen_at IS NULL OR seen_at < (UTC_TIMESTAMP() - INTERVAL " +
+        LOGIN_TTL_MIN +
+        " MINUTE)",
+    )
+    .catch(function () {});
+}
+
+setInterval(sweepLoginTokens, 120000).unref();
 
 function send(res, status, body) {
   const raw = JSON.stringify(body);
@@ -322,10 +472,34 @@ async function publicUser(userId) {
 async function userFromToken(token) {
   if (!token || typeof token !== "string") return null;
   const [rows] = await pool.query(
-    "SELECT u.id, u.name, u.faction FROM login_tokens t JOIN users u ON u.id=t.user_id WHERE t.token=?",
+    "SELECT u.id, u.name, u.faction, t.seen_at FROM login_tokens t JOIN users u ON u.id=t.user_id WHERE t.token=?",
     [token],
   );
-  return rows[0] || null;
+  if (!rows.length) return null;
+  // DATETIME de MySQL en UTC (UTC_TIMESTAMP). Se interpreta como Z.
+  const seenMs = rows[0].seen_at
+    ? Date.parse(String(rows[0].seen_at).replace(" ", "T") + "Z")
+    : 0;
+  if (!Number.isFinite(seenMs) || !seenMs || Date.now() - seenMs > LOGIN_TTL_MS) {
+    await pool.query("DELETE FROM login_tokens WHERE token=?", [token]);
+    return null;
+  }
+  await pool.query("UPDATE login_tokens SET seen_at=UTC_TIMESTAMP() WHERE token=?", [token]);
+  return { id: rows[0].id, name: rows[0].name, faction: rows[0].faction };
+}
+
+// Renueva el login por actividad real (jugadas, chat, etc.). No corta partidas largas.
+function bumpLogin(ws) {
+  if (!pool || !ws || !ws.userId || !ws.accountToken) return;
+  const now = Date.now();
+  if (ws._loginBump && now - ws._loginBump < 60000) return;
+  ws._loginBump = now;
+  pool
+    .query("UPDATE login_tokens SET seen_at=UTC_TIMESTAMP() WHERE token=? AND user_id=?", [
+      ws.accountToken,
+      ws.userId,
+    ])
+    .catch(function () {});
 }
 
 async function giveStarter(conn, userId, faction) {
@@ -347,8 +521,18 @@ async function handleHttp(req, res, urlPath) {
   }
   try {
     if (req.method === "POST" && urlPath === "/api/register") {
+      const ip = clientIp(req);
+      if (tooMany("reg:" + ip, 3, 3600000)) {
+        send(res, 429, { error: "rate" });
+        return;
+      }
       const body = await readBody(req);
       if (!validName(body.name) || !validPass(body.password) || FACTIONS.indexOf(body.faction) < 0) {
+        send(res, 400, { error: "bad" });
+        return;
+      }
+      // Campo trampa: bots que rellenan todo el formulario.
+      if (body.website || body.company || body.hp) {
         send(res, 400, { error: "bad" });
         return;
       }
@@ -362,7 +546,10 @@ async function handleHttp(req, res, urlPath) {
         );
         await giveStarter(conn, result.insertId, body.faction);
         const token = crypto.randomBytes(24).toString("hex");
-        await conn.query("INSERT INTO login_tokens (token, user_id) VALUES (?,?)", [token, result.insertId]);
+        await conn.query(
+          "INSERT INTO login_tokens (token, user_id, seen_at) VALUES (?,?,UTC_TIMESTAMP())",
+          [token, result.insertId],
+        );
         await conn.commit();
         const user = await publicUser(result.insertId);
         user.token = token;
@@ -378,6 +565,11 @@ async function handleHttp(req, res, urlPath) {
     }
 
     if (req.method === "POST" && urlPath === "/api/login") {
+      const ip = clientIp(req);
+      if (tooMany("login:" + ip, 30, 600000)) {
+        send(res, 429, { error: "rate" });
+        return;
+      }
       const body = await readBody(req);
       const [rows] = await pool.query(
         "SELECT id, pass_hash, pass_salt FROM users WHERE name=?",
@@ -391,11 +583,18 @@ async function handleHttp(req, res, urlPath) {
       const known = Buffer.from(rows[0].pass_hash, "hex");
       const got = Buffer.from(pass.hash, "hex");
       if (known.length !== got.length || !crypto.timingSafeEqual(known, got)) {
+        if (tooMany("login-bad:" + ip, 8, 600000)) {
+          send(res, 429, { error: "rate" });
+          return;
+        }
         send(res, 401, { error: "bad" });
         return;
       }
       const token = crypto.randomBytes(24).toString("hex");
-      await pool.query("INSERT INTO login_tokens (token, user_id) VALUES (?,?)", [token, rows[0].id]);
+      await pool.query(
+        "INSERT INTO login_tokens (token, user_id, seen_at) VALUES (?,?,UTC_TIMESTAMP())",
+        [token, rows[0].id],
+      );
       const user = await publicUser(rows[0].id);
       user.token = token;
       send(res, 200, user);
@@ -425,6 +624,10 @@ async function handleHttp(req, res, urlPath) {
         send(res, 401, { error: "auth" });
         return;
       }
+      if (tooMany("pack:" + user.id, 40, 600000) || tooMany("pack-ip:" + clientIp(req), 60, 600000)) {
+        send(res, 429, { error: "rate" });
+        return;
+      }
       const files = await openPack(user.id);
       if (!files) {
         send(res, 404, { error: "empty" });
@@ -443,13 +646,17 @@ async function handleHttp(req, res, urlPath) {
         send(res, 401, { error: "auth" });
         return;
       }
+      if (tooMany("cpu-start:" + user.id, 12, 600000)) {
+        send(res, 429, { error: "rate" });
+        return;
+      }
       const body = await readBody(req);
       if (FACTIONS.indexOf(body.me) < 0 || FACTIONS.indexOf(body.op) < 0) {
         send(res, 400, { error: "bad" });
         return;
       }
       const id = crypto.randomBytes(8).toString("hex");
-      cpuMatches.set(user.id, { id: id, me: body.me, op: body.op });
+      cpuMatches.set(user.id, { id: id, me: body.me, op: body.op, at: Date.now() });
       send(res, 200, { id: id });
       return;
     }
@@ -460,12 +667,22 @@ async function handleHttp(req, res, urlPath) {
         send(res, 401, { error: "auth" });
         return;
       }
+      if (tooMany("cpu:" + user.id, 12, 600000)) {
+        send(res, 429, { error: "rate" });
+        return;
+      }
       const body = await readBody(req);
       const match = cpuMatches.get(user.id);
       const rounds = match && match.id === body.id ? cleanRounds(body.rounds) : null;
       const verdict = rounds && verdictFromRounds(rounds, match.me, match.op);
       if (!verdict) {
         send(res, 400, { error: "bad" });
+        return;
+      }
+      // Un premio CPU cada 40s por cuenta: corta el farm de bots sin tocar partidas normales.
+      if (tooMany("cpu-prize:" + user.id, 1, 40000)) {
+        cpuMatches.delete(user.id);
+        send(res, 429, { error: "rate" });
         return;
       }
       cpuMatches.delete(user.id);
@@ -501,10 +718,9 @@ async function openPack(userId) {
     }
     let n = Number(rows[0].n) || 1;
     if (n < 1) n = 1;
-    if (n > 3) n = 3;
-    const weak = rows[0].kind === "weak";
+    if (n > 5) n = 5;
     const files = [];
-    for (let i = 0; i < n; i++) files.push(weak ? rewardFilename("lose") : randomFilename());
+    for (let i = 0; i < n; i++) files.push(rewardFilename("win"));
     await conn.query("UPDATE packs SET opened=1, filename=? WHERE id=?", [files[0], rows[0].id]);
     for (let i = 0; i < files.length; i++) {
       await conn.query(
@@ -781,6 +997,7 @@ function notePlay(ws, sessions) {
   if (!session || !session.matchLive || !ws.playerId) return;
   touch(session);
   session.played[ws.playerId] = (session.played[ws.playerId] || 0) + 1;
+  bumpLogin(ws);
 }
 
 function matchBegan(session) {
@@ -808,6 +1025,7 @@ async function onSocket(ws, data, sessions) {
     const user = await userFromToken(data.token);
     ws.userId = user ? user.id : null;
     ws.userName = user ? user.name : "";
+    ws.accountToken = user ? String(data.token || "") : "";
     ws.send(JSON.stringify(user ? { type: "authOk", name: user.name } : { type: "authNo" }));
     if (ws.sessionCode && sessions[ws.sessionCode]) {
       const session = sessions[ws.sessionCode];
@@ -815,6 +1033,7 @@ async function onSocket(ws, data, sessions) {
     }
     return "done";
   }
+  if (ws.userId) bumpLogin(ws);
   if (data.type === "betSet" || data.type === "betOk") {
     const session = sessions[ws.sessionCode];
     if (!session || !ws.userId) return "done";
@@ -874,6 +1093,7 @@ module.exports = {
   onSocket: onSocket,
   allowReady: allowReady,
   notePlay: notePlay,
+  bumpLogin: bumpLogin,
   matchBegan: matchBegan,
   forfeit: forfeit,
   sendBet: sendBet,

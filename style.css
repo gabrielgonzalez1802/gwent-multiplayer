@@ -2987,6 +2987,17 @@ main.noclick .leader-box {
 	gap: 8px;
 }
 
+#account-hp {
+	position: absolute;
+	left: -10000px;
+	top: auto;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	opacity: 0;
+	pointer-events: none;
+}
+
 #account-in.hide,
 #account-out.hide,
 #account-faction.hide,
@@ -3083,6 +3094,21 @@ main.noclick .leader-box {
 	padding: 10px 12px;
 	text-align: center;
 	z-index: 7000;
+	white-space: pre-line;
+}
+
+#reward-note.pack-win {
+	top: 18%;
+	width: min(720px, calc(100vw - 24px));
+	padding: 22px 28px;
+	font-size: 28px;
+	line-height: 1.3;
+	font-weight: 700;
+	color: #ffe7a0;
+	text-shadow: 0 2px 8px #000;
+	background: rgba(0, 0, 0, 0.92);
+	border: 2px solid goldenrod;
+	box-shadow: 0 0 28px rgba(218, 165, 32, 0.45);
 }
 
 #reward-note.low {
@@ -4038,6 +4064,15 @@ main.noclick .leader-box {
 		right: 8px;
 		width: auto;
 		font-size: 15px;
+	}
+
+	#reward-note.pack-win {
+		top: 14%;
+		left: 8px;
+		right: 8px;
+		width: auto;
+		font-size: 22px;
+		padding: 18px 16px;
 	}
 
 	#start-game {

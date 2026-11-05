@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const WebSocket = require("ws");
 const account = require("./account");
+const { MAX_SESSIONS, LOBBY_IDLE_MS } = require("./server-config");
 const WS_HOST = "0.0.0.0";
 const WS_PORT = process.env.PORT || 8080;
 const root = __dirname;
@@ -118,6 +119,77 @@ function pushRules(session, except) {
 
 const TURN_MS = 60000;
 
+function touchLobby(session) {
+  if (session) session.idleAt = Date.now();
+}
+
+function clearDisconnectTimers(code) {
+  Object.keys(disconnectedPlayers).forEach((pid) => {
+    if (disconnectedPlayers[pid].code !== code) return;
+    clearTimeout(disconnectedPlayers[pid].timeoutId);
+    delete disconnectedPlayers[pid];
+  });
+}
+
+// Cierra la sala, avisa a los demas y libera el cupo.
+async function closeSession(code, except, reason) {
+  const session = sessions[code];
+  if (!session) return;
+  clearMatchTimers(session);
+  clearDisconnectTimers(code);
+  const msg = JSON.stringify({
+    type: reason === "expired" ? "sessionExpired" : "sessionDeleted",
+  });
+  session.players.forEach((player) => {
+    if (player !== except && player.readyState === 1) player.send(msg);
+    player.sessionCode = null;
+  });
+  if (except) except.sessionCode = null;
+  delete sessions[code];
+  console.log("# Session " + code + " closed" + (reason ? ": " + reason : ""));
+}
+
+async function leaveCurrentRoom(ws, reason) {
+  const code = ws.sessionCode;
+  if (!code || !sessions[code]) {
+    ws.sessionCode = null;
+    return;
+  }
+  const session = sessions[code];
+  const host = session.players[0] === ws;
+  if (host || session.players.length <= 1) {
+    try {
+      await account.forfeit(session, ws.playerId);
+    } catch (err) {}
+    await closeSession(code, ws, reason || "left");
+    return;
+  }
+  try {
+    await account.forfeit(session, ws.playerId);
+  } catch (err) {}
+  session.players = session.players.filter((player) => player !== ws);
+  ws.sessionCode = null;
+  touchLobby(session);
+  const other = session.players[0];
+  if (other && other.readyState === 1) {
+    other.send(JSON.stringify({ type: "sessionUnready" }));
+    if (session.matchLive) other.send(JSON.stringify({ type: "sessionDeleted" }));
+  }
+  if (!session.players.length) await closeSession(code, null, "empty");
+  else if (session.matchLive) await closeSession(code, null, "match-left");
+}
+
+function pruneIdleLobbies() {
+  const now = Date.now();
+  Object.keys(sessions).forEach((code) => {
+    const session = sessions[code];
+    if (!session || session.matchLive) return;
+    const idleAt = session.idleAt || now;
+    if (now - idleAt < LOBBY_IDLE_MS) return;
+    closeSession(code, null, "expired");
+  });
+}
+
 function clearMatchTimers(session) {
   if (!session) return;
   if (session.turnTimer) clearTimeout(session.turnTimer);
@@ -125,6 +197,8 @@ function clearMatchTimers(session) {
   session.turnTimer = null;
   session.redrawTimer = null;
 }
+
+setInterval(pruneIdleLobbies, 60000).unref();
 
 function markRedraw(session, playerId) {
   if (!session.redrawDone) session.redrawDone = {};
@@ -287,6 +361,13 @@ async function onPlayerMessage(ws, message) {
     }
 
     if (data.type === "createSession") {
+      pruneIdleLobbies();
+      // Si ya estaba en una sala, la cierra antes de crear otra.
+      if (ws.sessionCode) await leaveCurrentRoom(ws, "recreate");
+      if (Object.keys(sessions).length >= MAX_SESSIONS) {
+        ws.send(JSON.stringify({ type: "sessionFull", max: MAX_SESSIONS }));
+        return;
+      }
       const sessionCode = generateCode();
       sessions[sessionCode] = {
         players: [ws],
@@ -294,6 +375,7 @@ async function onPlayerMessage(ws, message) {
         playersReady: 0,
         custom: !!data.custom,
         rules: cleanRules(data.rules),
+        idleAt: Date.now(),
       };
       account.touch(sessions[sessionCode]);
       ws.sessionCode = sessionCode;
@@ -315,37 +397,27 @@ async function onPlayerMessage(ws, message) {
     }
 
     if (data.type === "cancelSession") {
-      const sessionCode = data.code;
-      if (!sessions[sessionCode]) return;
-
+      const sessionCode = data.code || ws.sessionCode;
+      if (!sessionCode || !sessions[sessionCode]) {
+        ws.sessionCode = null;
+        return;
+      }
       console.log(`# Player ${ws.playerId} cancelled Session ${sessionCode}`);
-      clearMatchTimers(sessions[sessionCode]);
-      await account.forfeit(sessions[sessionCode], ws.playerId);
-      // clear any pending reconnect timers for that session
-      Object.keys(disconnectedPlayers).forEach((pid) => {
-        if (disconnectedPlayers[pid].code === sessionCode) {
-          clearTimeout(disconnectedPlayers[pid].timeoutId);
-          delete disconnectedPlayers[pid];
-        }
-      });
-
-      delete sessions[sessionCode];
+      try {
+        await account.forfeit(sessions[sessionCode], ws.playerId);
+      } catch (err) {}
+      await closeSession(sessionCode, ws, "cancel");
       return;
     }
 
     if (data.type === "leaveSession") {
-      const sessionCode = data.code;
-      if (!sessions[sessionCode]) return;
-
-      console.log(`# Player ${ws.playerId} left Session ${sessionCode}`);
-      await account.forfeit(sessions[sessionCode], ws.playerId);
-      sessions[sessionCode].players = sessions[sessionCode].players.filter(
-        (player) => player !== ws,
-      );
+      console.log(`# Player ${ws.playerId} left Session ${data.code || ws.sessionCode}`);
+      await leaveCurrentRoom(ws, "leave");
       return;
     }
 
     if (data.type === "joinSession") {
+      if (ws.sessionCode) await leaveCurrentRoom(ws, "rejoin");
       const sessionCode = String(data.code || "").trim().toUpperCase();
       if (sessions[sessionCode] && sessions[sessionCode].players.length === 1) {
         const host = sessions[sessionCode].players[0];
@@ -357,6 +429,7 @@ async function onPlayerMessage(ws, message) {
         }
         sessions[sessionCode].players.push(ws);
         ws.sessionCode = sessionCode;
+        touchLobby(sessions[sessionCode]);
         ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode }));
         console.log(`# Player ${ws.playerId} joined Session ${sessionCode}`);
 
@@ -380,6 +453,7 @@ async function onPlayerMessage(ws, message) {
     if (data.type === "gameStart") {
       if (ws.sessionCode && sessions[ws.sessionCode]) {
         const session = sessions[ws.sessionCode];
+        touchLobby(session);
         account.matchBegan(session);
         // A rematch reuses the same room. Without this, sendStart stays blocked after the first game.
         clearMatchTimers(session);
@@ -437,8 +511,13 @@ async function onPlayerMessage(ws, message) {
       }
     }
 
-    if (data.type === "unReady" && ws.sessionCode && sessions[ws.sessionCode])
+    if (data.type === "unReady" && ws.sessionCode && sessions[ws.sessionCode]) {
       sessions[ws.sessionCode].matchLive = false;
+      touchLobby(sessions[ws.sessionCode]);
+    }
+    if (ws.sessionCode && sessions[ws.sessionCode]) touchLobby(sessions[ws.sessionCode]);
+    if (data.type === "play" || data.type === "pass" || data.type === "chat" || data.type === "useLeader")
+      account.bumpLogin(ws);
     if (data.type === "play" || data.type === "useLeader") account.notePlay(ws, sessions);
     if (data.type === "ready" && !(await account.allowReady(ws, data, sessions))) return;
     if (data.type === "ready") ws.send(JSON.stringify({ type: "readyAck" }));

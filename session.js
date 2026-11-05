@@ -142,6 +142,10 @@ function handleLobbyMessage(event) {
     return;
   }
   if (data.type === "sessionCreated") showSessionCode(data.code);
+  if (data.type === "sessionFull") {
+    clearTimeout(createWatch);
+    if (typeof cancelSession === "function") cancelSession();
+  }
 }
 
 function announce() {
@@ -505,7 +509,7 @@ async function findSession() {
   });
 }
 
-function cancelSession() {
+function cancelSession(silent) {
   clearSeat();
   console.log("cancelSession");
   btnReadyElem.classList.add("hidden");
@@ -517,18 +521,18 @@ function cancelSession() {
   btnConfirmJoin.classList.add("hidden");
   inputGroup.classList.add("hidden");
 
-  if (createdSessionId) {
-    var created = createdSessionId;
-    createdSessionId = null;
-    console.log("Cancelled Session of code: " + created);
-    if (socket && socket.readyState === 1)
+  var created = createdSessionId;
+  var joined = joinedSessionId;
+  createdSessionId = null;
+  joinedSessionId = null;
+  if (!silent && socket && socket.readyState === 1) {
+    if (created) {
+      console.log("Cancelled Session of code: " + created);
       socket.send(JSON.stringify({ type: "cancelSession", code: created }));
-  } else if (joinedSessionId) {
-    var joined = joinedSessionId;
-    joinedSessionId = null;
-    console.log("Left Session of code: " + joined);
-    if (socket && socket.readyState === 1)
+    } else if (joined) {
+      console.log("Left Session of code: " + joined);
       socket.send(JSON.stringify({ type: "leaveSession", code: joined }));
+    }
   }
   if (typeof placeAccount === "function") placeAccount();
   if (typeof syncChat === "function") syncChat();

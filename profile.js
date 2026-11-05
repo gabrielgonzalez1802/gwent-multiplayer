@@ -25,10 +25,8 @@ function accountApi(path, body) {
   }).then(function (res) {
     return res.json().catch(function () { return {}; }).then(function (data) {
       data.ok = res.ok;
-      if (!res.ok && data.error === "auth") {
-        setAccountToken("");
-        accountProfile = null;
-        renderAccount();
+      if (!res.ok && (data.error === "auth" || res.status === 401)) {
+        clearAccountSession();
       }
       return data;
     });
@@ -40,7 +38,16 @@ function accountError(code) {
   if (code === "db") return t("acc_db");
   if (code === "empty") return t("pack_empty");
   if (code === "bad") return t("acc_bad");
+  if (code === "rate") return t("acc_rate");
+  if (code === "auth") return t("acc_expired");
   return t("acc_db");
+}
+
+function clearAccountSession() {
+  setAccountToken("");
+  accountProfile = null;
+  renderAccount();
+  if (typeof paintSeatRole === "function") paintSeatRole();
 }
 
 function cardTitle(filename) {
@@ -86,21 +93,32 @@ function showDropWait(ms) {
   }, 1000);
 }
 
+function packRewardText(n) {
+  var count = Number(n) || 0;
+  if (count <= 0) return t("cpu_none");
+  if (count === 1) return t("pack_got");
+  return tf("pack_got_n", { n: count });
+}
+
 function showReward(text, ms) {
   var note = document.getElementById("reward-note");
   if (rewardTimer) clearTimeout(rewardTimer);
   if (!text) {
     note.textContent = "";
     note.classList.remove("low");
+    note.classList.remove("pack-win");
     note.classList.add("hide");
     return;
   }
   note.textContent = text;
-  note.classList.toggle("low", (ms || 3500) > 3500);
+  var packHit = /sobre|pack/i.test(text) && !/ningun|none|no pack/i.test(text);
+  note.classList.toggle("pack-win", packHit);
+  note.classList.toggle("low", !packHit && (ms || 3500) > 3500);
   note.classList.remove("hide");
   rewardTimer = setTimeout(function () {
     note.classList.add("hide");
-  }, ms || 3500);
+    note.classList.remove("pack-win");
+  }, ms || (packHit ? 7000 : 3500));
 }
 
 function fillFactions() {
@@ -447,7 +465,7 @@ function grantCpuReward(rounds) {
     }
     accountProfile.packs = data.packs;
     renderAccount();
-    showReward(data.pack ? t("pack_got") : t("cpu_none"));
+    showReward(data.pack ? packRewardText(data.n) : t("cpu_none"));
   }).catch(function () { showReward(t("acc_db")); });
 }
 
@@ -476,9 +494,9 @@ function takeRewards(data) {
   else if (data.note === "forfeit-loss") text = tf("bet_forfeit_loss", { cards: cards });
   else if (data.note === "dispute") text = t("bet_dispute");
   else if (data.note === "draw") text = t("bet_draw");
-  if (data.pack) text = (text ? text + " " : "") + t("pack_got");
-  else text = (text ? text + " " : "") + t("cpu_none");
-  showReward(text);
+  if (data.pack) text = (text ? text + "\n" : "") + packRewardText(data.n);
+  else text = (text ? text + "\n" : "") + t("cpu_none");
+  showReward(text, data.pack ? 7000 : 3500);
 }
 
 var betState = null;
@@ -496,6 +514,16 @@ onSocketMessage = async function (event) {
   var data = JSON.parse(event.data);
   if (data.type === "welcome" && accountToken())
     netSend(JSON.stringify({ type: "auth", token: accountToken() }));
+  if (data.type === "authNo") {
+    clearAccountSession();
+    showReward(t("acc_expired"));
+    return;
+  }
+  if (data.type === "sessionFull") {
+    if (typeof cancelSession === "function") cancelSession();
+    showReward(tf("session_full", { n: data.max || 20 }));
+    return;
+  }
   if (data.type === "sessionMismatch" && data.role === "join") {
     showHold(t("session_mix"));
     if (!joinedSessionId) return;
@@ -538,7 +566,11 @@ onSocketMessage = async function (event) {
     return;
   }
   if (data.type === "sessionDeleted" || data.type === "sessionExpired" || data.type === "sessionUnready") {
-    if (data.type === "sessionDeleted" || data.type === "sessionExpired") clearHold();
+    if (data.type === "sessionDeleted" || data.type === "sessionExpired") {
+      clearHold();
+      // La sala ya la cerro el servidor: solo limpia el lobby local.
+      if (typeof cancelSession === "function") cancelSession(true);
+    }
     betState = null;
     betWanted = false;
     betDismissed = false;
@@ -599,7 +631,13 @@ document.getElementById("account-register").addEventListener("click", function (
     return;
   }
   accountBusy(true);
-  accountApi("/api/register", { name: name, password: password, faction: faction }).then(function (data) {
+  var hp = document.getElementById("account-hp");
+  accountApi("/api/register", {
+    name: name,
+    password: password,
+    faction: faction,
+    website: hp ? hp.value : "",
+  }).then(function (data) {
     accountBusy(false);
     if (!data.ok) {
       showReward(accountError(data.error));
@@ -904,9 +942,8 @@ placeAccount();
 if (accountToken()) {
   accountApi("/api/me").then(function (data) {
     if (!data.ok) {
-      setAccountToken("");
-      accountProfile = null;
-      if (typeof paintSeatRole === "function") paintSeatRole();
+      clearAccountSession();
+      if (data.error === "auth") showReward(t("acc_expired"));
       return;
     }
     acceptAccount(data);
