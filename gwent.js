@@ -4557,30 +4557,23 @@ function createCardElement(card) {
   return elem;
 }
 
+function bindCardSound(el) {
+  if (!el || el.dataset.som || el.id === "no_sound" || el.id === "no_hover") return;
+  el.dataset.som = "1";
+  el.addEventListener("mouseenter", function () {
+    tocar("card", false);
+  });
+}
+
+// ponytail: el sonido de carta solo va en la carta. Antes cada etiqueta del formulario lo disparaba, y al cambiar de faccion se enganchaba otra vez.
 function somCarta() {
   var classes = ["card", "card-lg"];
   for (var i = 0; i < classes.length; i++) {
     var cartas = document.getElementsByClassName(classes[i]);
-    for (var j = 0; j < cartas.length; j++) {
-      if (cartas[j].id != "no_sound" && cartas[j].id != "no_hover")
-        cartas[j].addEventListener("mouseover", function () {
-          tocar("card", false);
-        });
-    }
-  }
-  var tags = ["label", "a", "button"];
-  for (var i = 0; i < tags.length; i++) {
-    var rec = document.getElementsByTagName(tags[i]);
-    for (var j = 0; j < rec.length; j++)
-      rec[j].addEventListener("mouseover", function () {
-        tocar("card", false);
-      });
+    for (var j = 0; j < cartas.length; j++) bindCardSound(cartas[j]);
   }
   var ids = ["pass-button", "toggle-music"];
-  for (var i = 0; i < ids.length; i++)
-    document.getElementById(ids[i]).addEventListener("mouseover", function () {
-      tocar("card", false);
-    });
+  for (var i = 0; i < ids.length; i++) bindCardSound(document.getElementById(ids[i]));
 }
 
 var lastSound = "";

@@ -3293,7 +3293,7 @@ main.noclick .leader-box {
 	border: 0.1vw ridge rgb(30,30,30);
 }
 
-#offline-game:hover, #online-game:hover, #custom-mode:hover, #tutorial-game:hover, #join-game:hover, #confirm-join:hover, #create-game:hover, #start-game:hover, #cancel-game:hover, #bet-open:hover {
+#offline-game:hover, #online-game:hover, #custom-mode:hover, #tutorial-game:hover, #join-game:hover, #confirm-join:hover, #create-game:hover, #cancel-game:hover, #bet-open:hover {
   box-shadow: 0 0 rgba(0, 0, 0, 0.4);
   border-bottom-width: 2px;
   transform: translateY(2px);
@@ -3314,7 +3314,38 @@ main.noclick .leader-box {
 	border: 0.1vw ridge rgb(30,30,30);
 }
 
-#start-game,
+#start-game {
+	position: absolute;
+	z-index: 90;
+	left: 50%;
+	top: 50.4%;
+	transform: translate(-50%, -50%);
+	width: auto;
+	height: auto;
+	margin: 0;
+	padding: 0.14vw 0.85vw;
+	font-size: 1.05vw;
+	line-height: 1.15;
+	white-space: nowrap;
+	color: #f2e6c8;
+	background-color: rgb(20, 20, 20);
+	border: 0.15vw ridge rgb(90, 70, 30);
+	box-shadow: 0 0.4vw 1.2vw rgba(0, 0, 0, 0.55);
+	cursor: pointer;
+}
+
+#start-game.hidden {
+	display: none;
+}
+
+#deck-customization:has(#start-game:not(.hidden)) #deck-stats {
+	top: 53%;
+}
+
+#start-game:hover {
+	transform: translate(-50%, calc(-50% + 2px));
+}
+
 #bet-open {
 	position: static;
 	z-index: 87;
