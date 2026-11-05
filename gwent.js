@@ -929,11 +929,11 @@ class Row extends CardContainer {
       if (clickedCard(event) && cardClickAction(null, ui.previewCard, myKeyTurn()) !== "row") return;
       ui.selectRow(this);
     }, false);
-    this.elem.addEventListener("mouseover", function () {
+    this.elem.addEventListener("mouseenter", function () {
       tocar("card", false);
       this.style.boxShadow = "0 0 1.5vw #6d5210";
     });
-    this.elem.addEventListener("mouseout", function () {
+    this.elem.addEventListener("mouseleave", function () {
       this.style.boxShadow = "0 0 0 #6d5210";
     });
   }
@@ -4627,27 +4627,29 @@ function somCarta() {
 }
 
 var lastSound = "";
+var lastSoundAt = 0;
 
 function tocar(arquivo, pararMusica) {
-  if (arquivo != lastSound && arquivo != "") {
-    var s = new Audio("sfx/" + arquivo + ".mp3");
-    if (
-      pararMusica &&
-      ui.youtube &&
-      typeof ui.youtube.getPlayerState === "function" &&
-      typeof YT !== "undefined" &&
-      ui.youtube.getPlayerState() === YT.PlayerState.PLAYING
-    ) {
-      ui.youtube.pauseVideo();
-      ui.toggleMusic_elem.classList.add("fade");
-    }
-    lastSound = arquivo;
-    var played = s.play();
-    if (played && typeof played.catch === "function") played.catch(function () {});
-    setTimeout(function () {
-      lastSound = "";
-    }, 50);
+  if (!arquivo) return;
+  var now = Date.now();
+  // Arrastre rapido sobre cartas: un solo "card". Pasar despacio (mas de ~220 ms) suena una a una.
+  var gap = arquivo === "card" ? 220 : 50;
+  if (arquivo === lastSound && now - lastSoundAt < gap) return;
+  var s = new Audio("sfx/" + arquivo + ".mp3");
+  if (
+    pararMusica &&
+    ui.youtube &&
+    typeof ui.youtube.getPlayerState === "function" &&
+    typeof YT !== "undefined" &&
+    ui.youtube.getPlayerState() === YT.PlayerState.PLAYING
+  ) {
+    ui.youtube.pauseVideo();
+    ui.toggleMusic_elem.classList.add("fade");
   }
+  lastSound = arquivo;
+  lastSoundAt = now;
+  var played = s.play();
+  if (played && typeof played.catch === "function") played.catch(function () {});
 }
 
 /*----------------------------------------------------*/

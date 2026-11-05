@@ -447,7 +447,8 @@ async function onPlayerMessage(ws, message) {
     if (ws.sessionCode) {
       const sessionPlayers = sessions[ws.sessionCode]?.players || [];
       sessionPlayers.forEach((player) => {
-        if (player !== ws && player.readyState === WebSocket.OPEN) {
+        // readyState 1 = OPEN for ws and for /api/wire links
+        if (player !== ws && player.readyState === 1) {
           player.send(JSON.stringify(data));
         }
       });
