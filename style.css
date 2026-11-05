@@ -575,6 +575,7 @@ body.lang-es #pass-button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 #oponent-ready label {
@@ -3315,35 +3316,37 @@ main.noclick .leader-box {
 }
 
 #start-game {
-	position: absolute;
-	z-index: 90;
+	position: fixed;
+	z-index: 5000;
 	left: 50%;
-	top: 50.4%;
-	transform: translate(-50%, -50%);
+	bottom: 4.5vh;
+	transform: translateX(-50%);
 	width: auto;
 	height: auto;
 	margin: 0;
-	padding: 0.14vw 0.85vw;
-	font-size: 1.05vw;
-	line-height: 1.15;
+	padding: 0.7vh 2.4vh;
+	font-size: 18px;
+	line-height: 1.2;
+	letter-spacing: 0.04em;
 	white-space: nowrap;
 	color: #f2e6c8;
 	background-color: rgb(20, 20, 20);
-	border: 0.15vw ridge rgb(90, 70, 30);
+	border: 2px ridge rgb(160, 120, 50);
 	box-shadow: 0 0.4vw 1.2vw rgba(0, 0, 0, 0.55);
 	cursor: pointer;
+	pointer-events: auto;
 }
 
 #start-game.hidden {
 	display: none;
 }
 
-#deck-customization:has(#start-game:not(.hidden)) #deck-stats {
-	top: 53%;
+#start-game.disabled {
+	pointer-events: none;
 }
 
 #start-game:hover {
-	transform: translate(-50%, calc(-50% + 2px));
+	transform: translateX(-50%) translateY(2px);
 }
 
 #bet-open {

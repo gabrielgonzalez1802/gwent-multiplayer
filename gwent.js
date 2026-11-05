@@ -34,6 +34,23 @@ const passButton = document.getElementById("pass-button");
 const customizationElem = document.getElementById("deck-customization");
 const gameStartControlsElem = document.getElementById("session-start-control");
 
+function matchMayStart(mine, theirs) {
+  return mine === true && theirs === true;
+}
+
+function tryBeginMatch() {
+  if (!matchMayStart(amReady, oponentReady) || !player_me || !player_op) return;
+  customizationElem.classList.remove("noclick");
+  customizationElem.classList.add("hide");
+  gameStartControlsElem.classList.add("hide");
+  game.startGame();
+}
+
+(function () {
+  if (matchMayStart(true, false) || matchMayStart(false, true) || matchMayStart(false, false) || !matchMayStart(true, true))
+    throw new Error("ready");
+})();
+
 if (socket) socket.onmessage = onSocketMessage;
 
 async function onSocketMessage(event) {
@@ -98,6 +115,7 @@ async function onSocketMessage(event) {
     // Oponent has joined and the session is ready
     case "sessionReady":
       if (typeof clearHold === "function") clearHold();
+      readyButtonElem.classList.remove("hidden");
       readyButtonElem.classList.remove("disabled");
       isOponentReadyElem.classList.remove("hidden");
       // sends the oponent which faction you're playing with
@@ -125,23 +143,18 @@ async function onSocketMessage(event) {
 
       break;
 
-    // Oponent is ready. If you are ready begin the game immediately
+    // Oponent is ready. The match starts only when this side is ready too.
     case "ready":
       var rivalName = safeName(data.name) || "Oponent";
       player_op = new Player(1, rivalName, data.deck);
       var rivalBanner = document.getElementById("oponent-name");
       if (rivalBanner) rivalBanner.textContent = displayName(rivalName);
       paintSeatRole();
-      if (amReady) {
-        customizationElem.classList.add("hide");
-        gameStartControlsElem.classList.add("hide");
-
-        game.startGame();
-        return;
-      } else {
-        oponentReadyElem.classList.remove("disabled");
-        oponentReady = true;
-      }
+      oponentReadyElem.classList.remove("disabled");
+      oponentReady = true;
+      readyButtonElem.disabled = false;
+      readyButtonElem.classList.remove("disabled");
+      tryBeginMatch();
       break;
 
     case "opChangeFaction":
@@ -1402,6 +1415,7 @@ class Game {
 
   // Initializes player abilities, hands and waits for cointoss
   async startGame() {
+    readyButtonElem.classList.add("hidden");
     endChoice = "";
     oppEndChoice = "";
     if (tutorialOn && tutorialPhase !== "match") endTutorial();
@@ -1765,6 +1779,7 @@ class Game {
     customizationElem.classList.remove("hide");
     customizationElem.style.display = "";
     gameStartControlsElem.classList.remove("hide");
+    if (createdSessionId || joinedSessionId) readyButtonElem.classList.remove("hidden");
     var menu = document.getElementById("top-menu");
     var lobby = document.getElementById("lobby-bar");
     if (menu) menu.classList.remove("hide");
@@ -4081,10 +4096,7 @@ class DeckMaker {
     paintSeatRole();
     setTimeout(function () { readyButtonElem.disabled = false; }, 8000);
     amReady = true;
-    if (oponentReady) {
-      this.elem.classList.add("hide");
-      game.startGame();
-    }
+    tryBeginMatch();
   }
 
   startOffline() {
@@ -4790,6 +4802,7 @@ function ownSnap(code) {
 
 function showMatchScreen() {
   if (!iniciou) inicio();
+  readyButtonElem.classList.add("hidden");
   gameStartControlsElem.classList.add("hide");
   document.getElementById("lobby-bar").classList.add("hide");
   document.getElementById("top-menu").classList.add("hide");
