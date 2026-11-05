@@ -163,7 +163,8 @@ function attachSocketListeners() {
     if (!activeAddress || reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      openSocket(activeAddress).then((ok) => {
+      var again = activeAddress === "http" ? openHttp() : openSocket(activeAddress);
+      again.then((ok) => {
         if (!ok) showServerDown();
       });
     }, 1500);
@@ -230,6 +231,7 @@ function openSocket(address) {
   });
 }
 
+// NET_MODE en config.js puede ser "ws" o "http". Si no esta, se prueba el socket y, si no entra, esta misma pagina.
 async function ensureOnline() {
   if (socket && socket.readyState === 1) {
     showOnlineControls();
@@ -241,14 +243,186 @@ async function ensureOnline() {
   btnOnlineElem.classList.add("disabled");
   noServerWarningElement.classList.add("hidden");
   let ok = false;
-  for (const address of serverCandidates()) {
-    ok = await openSocket(address);
-    if (ok) break;
+  var mode = typeof NET_MODE === "string" ? NET_MODE : "auto";
+  var pageHttp = location.protocol === "http:" || location.protocol === "https:";
+  if (mode !== "http") {
+    for (const address of serverCandidates()) {
+      ok = await openSocket(address);
+      if (ok) break;
+    }
   }
+  if (!ok && mode !== "ws" && pageHttp) ok = await openHttp();
   connecting = false;
   btnOnlineElem.classList.remove("disabled");
   if (!ok) showServerDown();
 }
+
+var wirePoll = 0;
+var pageWireId = "";
+
+function stopWirePoll() {
+  wirePoll += 1;
+}
+
+function wireId() {
+  if (pageWireId && /^[a-z0-9]{8,32}$/.test(pageWireId)) return pageWireId;
+  pageWireId = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+  return pageWireId;
+}
+
+function requestWire(msg) {
+  return fetch("/api/wire", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ id: wireId(), msg: msg }),
+  }).then(function (res) {
+    if (!res.ok) throw new Error("wire");
+    return res.json();
+  }).then(function (body) {
+    return body && body.events ? body.events : [];
+  });
+}
+
+function makeClientLink() {
+  var listeners = [];
+  var sock = {
+    readyState: 1,
+    http: true,
+    onmessage: null,
+    onopen: null,
+    onclose: null,
+    onerror: null,
+    send: function (data) {
+      var msg;
+      try {
+        msg = JSON.parse(data);
+      } catch (e) {
+        return;
+      }
+      requestWire(msg).then(function (events) {
+        if (!sock.http || sock.readyState !== 1) return;
+        events.forEach(function (text) {
+          sock._emit(text);
+        });
+      }).catch(function () {
+        if (sock.readyState !== 1) return;
+        sock.readyState = 3;
+        stopWirePoll();
+        if (sock.onclose) sock.onclose();
+      });
+    },
+    addEventListener: function (type, fn) {
+      if (type === "message" && listeners.indexOf(fn) === -1) listeners.push(fn);
+    },
+    removeEventListener: function (type, fn) {
+      var at = listeners.indexOf(fn);
+      if (at >= 0) listeners.splice(at, 1);
+    },
+    close: function () {
+      sock.readyState = 3;
+      stopWirePoll();
+    },
+    _emit: function (text) {
+      var event = { data: text };
+      listeners.slice().forEach(function (fn) {
+        fn(event);
+      });
+      if (sock.onmessage) sock.onmessage(event);
+    },
+  };
+  return sock;
+}
+
+function pollWire(token) {
+  var misses = 0;
+  function again() {
+    if (!socket || !socket.http || socket.readyState !== 1 || wirePoll !== token) return;
+    fetch("/api/wire?id=" + encodeURIComponent(wireId()), { cache: "no-store" })
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (body) {
+        if (!socket || !socket.http || socket.readyState !== 1 || wirePoll !== token) return;
+        if (body && body.gone) {
+          socket.readyState = 3;
+          stopWirePoll();
+          if (socket.onclose) socket.onclose();
+          return;
+        }
+        misses = 0;
+        (body && body.events ? body.events : []).forEach(function (text) {
+          socket._emit(text);
+        });
+        again();
+      })
+      .catch(function () {
+        if (!socket || !socket.http || wirePoll !== token) return;
+        misses += 1;
+        if (misses >= 3) {
+          socket.readyState = 3;
+          stopWirePoll();
+          if (socket.onclose) socket.onclose();
+          return;
+        }
+        setTimeout(again, 1000);
+      });
+  }
+  again();
+}
+
+function openHttp() {
+  return requestWire({
+    type: "connect",
+    id: typeof playerId === "undefined" ? null : playerId,
+  }).then(function (events) {
+    var welcome = null;
+    var rest = [];
+    events.forEach(function (text) {
+      var data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return;
+      }
+      if (!welcome && data.type === "welcome") welcome = data;
+      else rest.push(text);
+    });
+    if (!welcome) return false;
+    if (socket) {
+      socket.onclose = null;
+      try {
+        socket.close();
+      } catch (e) {}
+    }
+    socket = makeClientLink();
+    activeAddress = "http";
+    if (welcome.playerId) playerId = welcome.playerId;
+    attachSocketListeners();
+    markOnline();
+    if (typeof afterWelcome === "function") afterWelcome();
+    rest.forEach(function (text) {
+      socket._emit(text);
+    });
+    pollWire(++wirePoll);
+    return true;
+  }).catch(function () {
+    return false;
+  });
+}
+
+window.addEventListener("pagehide", function () {
+  if (!socket || !socket.http || socket.readyState !== 1) return;
+  var id = wireId();
+  socket.readyState = 3;
+  stopWirePoll();
+  try {
+    navigator.sendBeacon(
+      "/api/wire",
+      new Blob([JSON.stringify({ id: id, bye: true })], { type: "application/json" }),
+    );
+  } catch (e) {}
+});
 
 var createdSessionId = null;
 var joinedSessionId = null;

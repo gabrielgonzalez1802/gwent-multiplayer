@@ -22,6 +22,10 @@ const fileTypes = {
 
 const httpServer = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(req.url.split("?")[0]);
+  if (urlPath === "/api/wire") {
+    handleWire(req, res);
+    return;
+  }
   if (urlPath.startsWith("/api/")) {
     account.handleHttp(req, res, urlPath);
     return;
@@ -50,6 +54,7 @@ const wss = new WebSocket.Server({ server: httpServer });
 
 let sessions = {};
 let players = [];
+let httpLinks = {};
 let disconnectedPlayers = {}; // { [playerId]: { code, timeoutId } }
 let expiredPlayers = {}; // { [playerId]: timestamp }
 
@@ -196,8 +201,7 @@ httpServer.listen(WS_PORT, WS_HOST, () => {
   console.log("http://127.0.0.1:" + WS_PORT);
 });
 
-wss.on("connection", (ws) => {
-  ws.on("message", async (message) => {
+async function onPlayerMessage(ws, message) {
     let data;
     try {
       data = JSON.parse(message);
@@ -276,7 +280,7 @@ wss.on("connection", (ws) => {
       } else if (takeExpired(ws.playerId)) {
         ws.send(JSON.stringify({ type: "sessionExpired" }));
       } else if (data?.id) {
-        ws.send(JSON.stringify({ type: "sessionGone" }));
+        if (!takeHttpSeat(ws)) ws.send(JSON.stringify({ type: "sessionGone" }));
       }
 
       return;
@@ -450,10 +454,13 @@ wss.on("connection", (ws) => {
     } catch (err) {
       console.log("message: " + err.message);
     }
-  });
+}
 
-  ws.on("close", () => {
-    if (!ws.playerId) return;
+function onPlayerClose(ws) {
+  if (ws._gone) return;
+  ws._gone = true;
+  if (ws.http) ws.readyState = 3;
+  if (!ws.playerId) return;
     console.log(`# Player ${ws.playerId} disconnected`);
 
     if (ws.sessionCode && sessions[ws.sessionCode]) {
@@ -505,7 +512,216 @@ wss.on("connection", (ws) => {
     }
 
     players = players.filter((player) => player !== ws);
+}
+
+wss.on("connection", (ws) => {
+  ws.on("message", (message) => {
+    onPlayerMessage(ws, message);
   });
+  ws.on("close", () => onPlayerClose(ws));
 });
+
+// ponytail: al recargar, el aviso de cierre puede llegar despues del connect nuevo. Si el asiento viejo ya no es un socket vivo, lo toma este.
+function takeHttpSeat(ws) {
+  const codes = Object.keys(sessions);
+  for (let i = 0; i < codes.length; i++) {
+    const session = sessions[codes[i]];
+    if (!session || !session.players) continue;
+    const idx = session.players.findIndex(
+      (player) => player && player.playerId === ws.playerId && player !== ws && (player.http || player.readyState !== 1),
+    );
+    if (idx === -1) continue;
+    const old = session.players[idx];
+    session.players[idx] = ws;
+    ws.sessionCode = codes[i];
+    if (old && old !== ws) {
+      old.sessionCode = null;
+      if (old.http) old.readyState = 3;
+    }
+    ws.send(JSON.stringify({
+      type: "sessionRestored",
+      code: codes[i],
+      host: session.players[0] === ws,
+      live: !!session.matchLive,
+    }));
+    if (session.rules) {
+      ws.send(JSON.stringify({
+        type: "sessionRules",
+        custom: !!session.custom,
+        rules: session.rules,
+      }));
+    }
+    account.sendBet(session);
+    return true;
+  }
+  return false;
+}
+
+function takeWire(link) {
+  return link.box.splice(0);
+}
+
+function makeHttpLink(id) {
+  return {
+    readyState: 1,
+    http: true,
+    wireId: id,
+    box: [],
+    wait: null,
+    busy: false,
+    seen: Date.now(),
+    playerId: null,
+    sessionCode: null,
+    userId: null,
+    send(text) {
+      if (this.readyState !== 1) return;
+      this.box.push(String(text));
+      if (this.wait && !this.busy) this.wait();
+    },
+  };
+}
+
+(function () {
+  const link = makeHttpLink("abc12345abc12345");
+  let wakes = 0;
+  link.busy = true;
+  link.wait = () => {
+    wakes += 1;
+  };
+  link.send('{"type":"a"}');
+  link.send('{"type":"b"}');
+  if (wakes !== 0 || link.box.length !== 2 || link.readyState !== 1) throw new Error("wire");
+  link.busy = false;
+  link.wait = () => {
+    wakes += 1;
+    link.wait = null;
+    takeWire(link);
+  };
+  link.send('{"type":"c"}');
+  if (wakes !== 1 || link.box.length !== 0) throw new Error("wire");
+})();
+
+function writeJson(res, code, body) {
+  if (res.writableEnded) return;
+  res.writeHead(code, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(JSON.stringify(body));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > 1e6) {
+        reject(new Error("grande"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+function readWireId(value) {
+  const id = String(value || "");
+  return /^[a-z0-9]{8,32}$/.test(id) ? id : "";
+}
+
+function armHold(link, res) {
+  const timer = setTimeout(finish, 15000);
+  function finish() {
+    if (link.wait !== finish) return;
+    link.wait = null;
+    clearTimeout(timer);
+    link.seen = Date.now();
+    try {
+      writeJson(res, 200, { events: takeWire(link) });
+    } catch (err) {}
+  }
+  link.wait = finish;
+  res.on("close", () => {
+    if (link.wait !== finish) return;
+    link.wait = null;
+    clearTimeout(timer);
+  });
+}
+
+// ponytail: el hosting compartido tira el header Upgrade, asi que /api/wire lleva el mismo JSON.
+// El socket sigue igual cuando el handshake responde 101. Si el aviso de cierre no sale, a los 45s cuenta como desconexion y despues corren los 20s de siempre.
+async function handleWire(req, res) {
+  try {
+    if (req.method === "GET") {
+      const id = readWireId(new URLSearchParams(req.url.split("?")[1] || "").get("id"));
+      const link = id && httpLinks[id];
+      if (!link) {
+        writeJson(res, 200, { events: [], gone: true });
+        return;
+      }
+      if (link.readyState !== 1) {
+        writeJson(res, 200, { events: [] });
+        return;
+      }
+      link.seen = Date.now();
+      if (link.box.length) {
+        writeJson(res, 200, { events: takeWire(link) });
+        return;
+      }
+      armHold(link, res);
+      return;
+    }
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "method" });
+      return;
+    }
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const id = readWireId(body.id);
+    if (!id) {
+      writeJson(res, 400, { error: "id" });
+      return;
+    }
+    if (body.bye) {
+      const link = httpLinks[id];
+      if (link) {
+        delete httpLinks[id];
+        onPlayerClose(link);
+      }
+      writeJson(res, 200, { events: [] });
+      return;
+    }
+    let link = httpLinks[id];
+    if (!link || link.readyState !== 1) {
+      link = makeHttpLink(id);
+      httpLinks[id] = link;
+    }
+    link.seen = Date.now();
+    link.busy = true;
+    try {
+      if (body.msg && typeof body.msg === "object") await onPlayerMessage(link, JSON.stringify(body.msg));
+    } finally {
+      link.busy = false;
+    }
+    writeJson(res, 200, { events: takeWire(link) });
+  } catch (err) {
+    console.log("wire: " + err.message);
+    if (!res.writableEnded) writeJson(res, 500, { error: "wire" });
+  }
+}
+
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(httpLinks).forEach((id) => {
+    const link = httpLinks[id];
+    if (!link || link.wait || link.busy) return;
+    if (now - link.seen < 45000) return;
+    delete httpLinks[id];
+    onPlayerClose(link);
+  });
+}, 4000);
 
 console.log("Waiting for the port...");
