@@ -792,10 +792,11 @@ function syncChat() {
     hideChatToast();
     document.getElementById("chat-log").textContent = "";
     btn.classList.remove("unread");
-    var navBtn = document.getElementById("nav-open");
-    if (navBtn) navBtn.classList.remove("unread");
   }
   btn.classList.toggle("hide", !on);
+  var label = typeof t === "function" ? t("chat_title") : "Chat";
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
   if (typeof paintSeatRole === "function") paintSeatRole();
 }
 
@@ -825,8 +826,6 @@ function takeChat(data) {
     showChatToast(name, text);
     var chatBtn = document.getElementById("chat-open");
     if (chatBtn) chatBtn.classList.add("unread");
-    var navBtn = document.getElementById("nav-open");
-    if (navBtn) navBtn.classList.add("unread");
   }
 }
 
@@ -846,8 +845,6 @@ document.getElementById("chat-open").addEventListener("click", function (event) 
   panel.classList.toggle("hide");
   hideChatToast();
   document.getElementById("chat-open").classList.remove("unread");
-  var navBtn = document.getElementById("nav-open");
-  if (navBtn) navBtn.classList.remove("unread");
   var nav = document.getElementById("nav");
   if (nav) nav.classList.remove("open");
   if (panel.classList.contains("hide")) document.getElementById("chat-emoji-box").classList.add("hide");

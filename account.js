@@ -233,13 +233,19 @@ function rewardFilename() {
   return pickWinCard();
 }
 
-// Cartas dentro de cada sobre: 1..5 con peso.
+// Cartas por sobre al ganar: 1..5 con peso.
 const CARDS_PER_PACK_WEIGHTS = [
   [1, 8],
   [2, 22],
   [3, 35],
   [4, 23],
   [5, 12],
+];
+
+// Al perder/empatar el sobre (si toca) solo trae 1..2 cartas.
+const CARDS_ON_LOSE_WEIGHTS = [
+  [1, 70],
+  [2, 30],
 ];
 
 // Sobres al ganar: 1..3 con peso. Pierde/empate: 0 o 1.
@@ -260,7 +266,8 @@ function pickWeightedCount(weights) {
   return weights[weights.length - 1][0];
 }
 
-function cardsPerPack() {
+function cardsPerPack(result) {
+  if (result === "lose" || result === "draw") return pickWeightedCount(CARDS_ON_LOSE_WEIGHTS);
   return pickWeightedCount(CARDS_PER_PACK_WEIGHTS);
 }
 
@@ -275,10 +282,12 @@ function checkCpuReward() {
   for (let i = 0; i < 80; i++) {
     const win = cpuRewardCount("win");
     const lose = cpuRewardCount("lose");
-    const cards = cardsPerPack();
+    const winCards = cardsPerPack("win");
+    const loseCards = cardsPerPack("lose");
     if (win < 1 || win > 3) throw new Error("cpu premio gana");
     if (lose !== 0 && lose !== 1) throw new Error("cpu premio pierde");
-    if (cards < 1 || cards > 5) throw new Error("cartas por sobre");
+    if (winCards < 1 || winCards > 5) throw new Error("cartas por sobre");
+    if (loseCards < 1 || loseCards > 2) throw new Error("cartas pierde");
   }
   for (let i = 0; i < 400; i++) {
     const card = cardByFile[rewardFilename()].card;
@@ -295,7 +304,7 @@ async function grantCpuCards(userId, result) {
   const packs = cpuRewardCount(result);
   if (!packs) return { pack: false, n: 0 };
   for (let i = 0; i < packs; i++) {
-    const cards = cardsPerPack();
+    const cards = cardsPerPack(result);
     await pool.query("INSERT INTO packs (user_id, opened, n, kind) VALUES (?,0,?,?)", [
       userId,
       cards,

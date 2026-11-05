@@ -216,8 +216,7 @@ html {
 #lang-toggle,
 #full-toggle,
 #rules-open,
-#aid-open,
-#chat-open {
+#aid-open {
 	height: 32px;
 	padding: 0 12px;
 	color: #ddd;
@@ -230,9 +229,29 @@ html {
 
 #rules-open,
 #aid-open,
-#full-toggle,
-#chat-open {
+#full-toggle {
 	color: goldenrod;
+}
+
+#chat-open {
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	color: #1a1208;
+	background: linear-gradient(180deg, #f0d78c 0%, #c4a574 100%);
+	border: 1px solid #8a6a30;
+	box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+	cursor: pointer;
+}
+
+#chat-open svg {
+	width: 22px;
+	height: 22px;
+	display: block;
 }
 
 #chat-open.hide,
@@ -240,10 +259,16 @@ html {
 	display: none;
 }
 
-#chat-open.unread,
-#nav-open.unread {
-	border-color: goldenrod;
-	box-shadow: 0 0 8px goldenrod;
+#chat-open.unread {
+	border-color: #ffe7a0;
+	box-shadow: 0 0 12px goldenrod, 0 3px 8px rgba(0, 0, 0, 0.45);
+	animation: chat-open-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes chat-open-pulse {
+	0%,
+	100% { transform: scale(1); }
+	50% { transform: scale(1.08); }
 }
 
 #chat-toast {
@@ -3936,6 +3961,10 @@ main.noclick .leader-box {
 	#chat-toast.chat-toast-pop {
 		animation: none;
 	}
+
+	#chat-open.unread {
+		animation: none;
+	}
 }
 
 /* Mobile / pantallas chicas: solo overlays y menus. El tablero de escritorio no cambia. */
@@ -4016,6 +4045,16 @@ main.noclick .leader-box {
 		right: max(8px, env(safe-area-inset-right, 0px));
 		left: auto;
 		max-width: calc(100% - 16px);
+	}
+
+	#chat-open {
+		width: 44px;
+		height: 44px;
+	}
+
+	#chat-open svg {
+		width: 24px;
+		height: 24px;
 	}
 
 	#nav-open {
