@@ -1309,6 +1309,96 @@ body.lang-es #notif-zerrikania::after {
 	top: 77%;
 }
 
+#carousel-hint {
+	position: absolute;
+	left: 50%;
+	bottom: 18%;
+	transform: translateX(-50%);
+	z-index: 3;
+	box-sizing: border-box;
+	width: min(640px, calc(100% - 24px));
+	margin: 0;
+	padding: 8px 12px;
+	font-size: 14px;
+	line-height: 1.35;
+	text-align: center;
+	color: #f2e6c8;
+	background: rgba(0, 0, 0, 0.88);
+	border: 1px solid goldenrod;
+	pointer-events: none;
+}
+
+#carousel-actions {
+	position: absolute;
+	left: 50%;
+	bottom: 6%;
+	transform: translateX(-50%);
+	z-index: 4;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: center;
+	width: min(640px, calc(100% - 24px));
+}
+
+#carousel-actions.hide,
+#carousel-hint.hide {
+	display: none;
+}
+
+#carousel-actions button {
+	min-height: 40px;
+	padding: 0 14px;
+	font-size: 15px;
+	color: #1a1208;
+	background: linear-gradient(180deg, #f0d78c 0%, #c4a574 100%);
+	border: 1px solid #8a6a30;
+	cursor: pointer;
+}
+
+#carousel-skip {
+	background: rgb(20, 20, 20) !important;
+	color: #f2e6c8 !important;
+}
+
+#leave-match {
+	height: 32px;
+	padding: 0 12px;
+	font-size: 14px;
+	color: #f2e6c8;
+	background: rgb(20, 20, 20);
+	border: 1px solid rgba(196, 165, 116, 0.7);
+	cursor: pointer;
+}
+
+#leave-match.hide {
+	display: none;
+}
+
+#leave-lobby {
+	position: fixed;
+	z-index: 4050;
+	left: 12px;
+	bottom: 12px;
+	min-height: 36px;
+	padding: 0 14px;
+	font-size: 14px;
+	color: #f2e6c8;
+	background: rgba(0, 0, 0, 0.72);
+	border: 1px solid rgba(196, 165, 116, 0.55);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+	cursor: pointer;
+	opacity: 0.85;
+}
+
+#leave-lobby:hover {
+	opacity: 1;
+}
+
+#leave-lobby.hide {
+	display: none;
+}
+
 #carousel>:nth-child(3) {
 	position: absolute;
 	width: 100%;
@@ -4055,6 +4145,35 @@ main.noclick .leader-box {
 	#chat-open svg {
 		width: 24px;
 		height: 24px;
+	}
+
+	#leave-match {
+		min-height: 44px;
+		font-size: 15px;
+	}
+
+	#leave-lobby {
+		left: max(8px, env(safe-area-inset-left, 0px));
+		bottom: max(8px, env(safe-area-inset-bottom, 0px));
+		min-height: 44px;
+		font-size: 15px;
+	}
+
+	#carousel-hint {
+		bottom: 22%;
+		font-size: 15px;
+		padding: 10px 12px;
+	}
+
+	#carousel-actions {
+		bottom: 4%;
+		gap: 6px;
+	}
+
+	#carousel-actions button {
+		min-height: 44px;
+		font-size: 15px;
+		flex: 1 1 40%;
 	}
 
 	#nav-open {

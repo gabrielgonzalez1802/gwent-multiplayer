@@ -276,10 +276,19 @@ async function onSocketMessage(event) {
 
     // Game - Oponent used the leader card
     case "useLeader":
-      player_op.activateLeader();
+      // medicOpen: Eredin Bringer / medicDraw del lider no se perdia por llegar antes del listener.
+      if (game) game.medicOpen = true;
+      try {
+        await player_op.activateLeader();
+      } finally {
+        if (game) {
+          game.medicOpen = false;
+          game.pendingMedic = null;
+        }
+      }
       break;
 
-    case "skelligeAbility":
+    case "skelligeAbility": {
       const playedCards = data.cards.map((c) => c.filename);
 
       const cardCounts = playedCards.reduce((counts, filename) => {
@@ -299,18 +308,22 @@ async function onSocketMessage(event) {
       await Promise.all(
         graveCards.map((card) => board.toRow(card, player_op.grave)),
       );
+      break;
+    }
 
-    case "monstersKeepCard":
+    case "monstersKeepCard": {
       const keptCard = board
         .getRow(data.card, data.card.row, player_op)
         .findCard((c) => c.filename === data.card.filename);
-      if (!keptCard) return;
+      if (!keptCard) break;
       keptCard.noRemove = true;
       game.roundStart.push(async () => {
         await ui.notification("monsters", 1200);
         delete keptCard.noRemove;
         return true;
       });
+      break;
+    }
   }
 }
 
@@ -1454,7 +1467,11 @@ class Game {
     gameStartControlsElem.classList.add("hide");
     document.getElementById("lobby-bar").classList.add("hide");
     document.getElementById("top-menu").classList.add("hide");
-    closeMenus();
+    closeNav();
+    var leaveMatch = document.getElementById("leave-match");
+    if (leaveMatch) leaveMatch.classList.remove("hide");
+    var leaveLobby = document.getElementById("leave-lobby");
+    if (leaveLobby) leaveLobby.classList.add("hide");
     var accountBar = document.getElementById("account-bar");
     var betPanel = document.getElementById("bet-panel");
     if (accountBar) accountBar.classList.add("hide");
@@ -1819,7 +1836,10 @@ class Game {
     if (lobby) lobby.classList.remove("hide");
     var accountBar = document.getElementById("account-bar");
     if (accountBar) accountBar.classList.remove("hide");
-    closeMenus();
+    var leaveMatch = document.getElementById("leave-match");
+    if (leaveMatch) leaveMatch.classList.add("hide");
+    syncLeaveLobby();
+    closeNav();
     isOponentReadyElem.classList.add("hidden");
     if (typeof syncOwnedDeck === "function") {
       try { syncOwnedDeck(); } catch (err) { console.error(err); }
@@ -2658,6 +2678,7 @@ class Carousel {
     }
 
     this.elem.classList.remove("hide");
+    paintCarouselChrome(this);
     if (!this.bExit) ui.enablePlayer(true);
     tocar("explaining", false);
     if (typeof onTutorialCarousel === "function") onTutorialCarousel();
@@ -2680,10 +2701,8 @@ class Carousel {
     const actionString = this.action.toString();
     tocar("redraw", false);
     const resp = await this.action(this.container, this.indices[this.index]);
-    if (
-      actionString === "(c, i) => wrapper.card=c.cards[i]" ||
-      actionString === "(c,i) => newCard = c.cards[i]"
-    ) {
+    // Solo el lambda legado. medicPick / medicHandPick mandan medicDraw desde abilities.js.
+    if (actionString === "(c,i) => newCard = c.cards[i]") {
       if (resp && resp.filename) setTimeout(() => {
         netSend(JSON.stringify({ type: "medicDraw", card: resp.filename }));
       }, 1000);
@@ -2763,6 +2782,7 @@ class Carousel {
   exit() {
     for (let x of this.previews) x.style.backgroundImage = "";
     this.elem.classList.add("hide");
+    hideCarouselChrome();
     Carousel.clearCurrent();
     ui.quitCarousel();
     if (this.bExit) restoreBoardClicks();
@@ -5055,10 +5075,63 @@ function leaveFinishedMatch(dropSession) {
     deck.classList.remove("hide");
     deck.style.display = "";
   }
-  closeMenus();
+  var leaveMatch = document.getElementById("leave-match");
+  if (leaveMatch) leaveMatch.classList.add("hide");
+  closeNav();
   if (dropSession && typeof cancelSession === "function") {
     try { cancelSession(); } catch (err) { console.error(err); }
   }
+  syncLeaveLobby();
+}
+
+function syncLeaveLobby() {
+  var btn = document.getElementById("leave-lobby");
+  if (!btn) return;
+  // Visible en mazo cuando hay sala online, sin tapar el centro.
+  var inRoom = gameMode !== "offline" && !!(createdSessionId || joinedSessionId);
+  var deck = document.getElementById("deck-customization");
+  var onDeck = deck && !deck.classList.contains("hide") && deck.style.display !== "none";
+  var leaveMatch = document.getElementById("leave-match");
+  var inMatch = leaveMatch && !leaveMatch.classList.contains("hide");
+  btn.classList.toggle("hide", !inRoom || !onDeck || inMatch);
+}
+
+function paintCarouselChrome(carousel) {
+  var hint = document.getElementById("carousel-hint");
+  var actions = document.getElementById("carousel-actions");
+  var skip = document.getElementById("carousel-skip");
+  if (hint) {
+    hint.textContent = carousel && carousel.title === "redraw_hint" ? t("carousel_redraw") : t("carousel_hint");
+    hint.classList.remove("hide");
+  }
+  if (actions) actions.classList.remove("hide");
+  if (skip) skip.classList.toggle("hide", !(carousel && carousel.bExit));
+}
+
+function hideCarouselChrome() {
+  var hint = document.getElementById("carousel-hint");
+  var actions = document.getElementById("carousel-actions");
+  if (hint) hint.classList.add("hide");
+  if (actions) actions.classList.add("hide");
+}
+
+function askLeaveMatch() {
+  gameNotice(t("leave_match_ask"), true).then(function (ok) {
+    if (!ok) return;
+    leaveFinishedMatch(true);
+  });
+}
+
+function askLeaveLobby() {
+  if (!(createdSessionId || joinedSessionId)) {
+    syncLeaveLobby();
+    return;
+  }
+  gameNotice(t("leave_room_ask"), true).then(function (ok) {
+    if (!ok) return;
+    if (typeof cancelSession === "function") cancelSession();
+    syncLeaveLobby();
+  });
 }
 
 function clearTurnClock() {
@@ -5718,6 +5791,16 @@ function closeMenus(except) {
   for (var i = 0; i < drops.length; i++) {
     if (drops[i] !== except) drops[i].classList.remove("open");
   }
+  if (!except) {
+    var nav = document.getElementById("nav");
+    if (nav) nav.classList.remove("open");
+  }
+}
+
+function closeNav() {
+  var nav = document.getElementById("nav");
+  if (nav) nav.classList.remove("open");
+  closeMenus();
 }
 
 function openMenuFor(el) {
@@ -5767,6 +5850,39 @@ if (navTools) {
     document.getElementById("nav").classList.remove("open");
   });
 }
+
+(function () {
+  var prev = document.getElementById("carousel-prev");
+  var next = document.getElementById("carousel-next");
+  var pick = document.getElementById("carousel-pick");
+  var skip = document.getElementById("carousel-skip");
+  if (prev) prev.addEventListener("click", function (event) {
+    event.stopPropagation();
+    if (Carousel.curr) Carousel.curr.shift(event, -1);
+  });
+  if (next) next.addEventListener("click", function (event) {
+    event.stopPropagation();
+    if (Carousel.curr) Carousel.curr.shift(event, 1);
+  });
+  if (pick) pick.addEventListener("click", function (event) {
+    event.stopPropagation();
+    if (Carousel.curr) Carousel.curr.select(event);
+  });
+  if (skip) skip.addEventListener("click", function (event) {
+    event.stopPropagation();
+    if (Carousel.curr) Carousel.curr.cancel();
+  });
+  var leaveMatch = document.getElementById("leave-match");
+  if (leaveMatch) leaveMatch.addEventListener("click", function (event) {
+    event.stopPropagation();
+    askLeaveMatch();
+  });
+  var leaveLobby = document.getElementById("leave-lobby");
+  if (leaveLobby) leaveLobby.addEventListener("click", function (event) {
+    event.stopPropagation();
+    askLeaveLobby();
+  });
+})();
 
 document.getElementById("tutorial-game").addEventListener("click", startTutorial);
 document.getElementById("tutorial-close").addEventListener("click", endTutorial);

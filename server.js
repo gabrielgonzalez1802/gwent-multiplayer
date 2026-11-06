@@ -179,6 +179,49 @@ async function leaveCurrentRoom(ws, reason) {
   else if (session.matchLive) await closeSession(code, null, "match-left");
 }
 
+async function kickDuplicateUser(ws) {
+  if (!ws || !ws.userId) return;
+  const codes = Object.keys(sessions);
+  for (let i = 0; i < codes.length; i++) {
+    const code = codes[i];
+    const session = sessions[code];
+    if (!session) continue;
+    const twins = session.players.filter(function (player) {
+      return player !== ws && player.userId === ws.userId;
+    });
+    if (!twins.length) continue;
+    const wasLive = !!session.matchLive;
+    for (let t = 0; t < twins.length; t++) {
+      const other = twins[t];
+      try {
+        await account.forfeit(session, other.playerId);
+      } catch (err) {}
+      if (other.readyState === 1) {
+        other.send(JSON.stringify({ type: "sessionDeleted" }));
+      }
+      other.sessionCode = null;
+    }
+    session.players = session.players.filter(function (player) {
+      return player === ws || player.userId !== ws.userId;
+    });
+    if (!session.players.length) {
+      clearMatchTimers(session);
+      clearDisconnectTimers(code);
+      delete sessions[code];
+      console.log("# Session " + code + " closed: login duplicado");
+    } else if (wasLive) {
+      await closeSession(code, ws.sessionCode === code ? ws : null, "login-dup");
+    } else if (ws.sessionCode === code) {
+      touchLobby(session);
+    } else if (session.players.length === 1 && session.players[0].readyState === 1) {
+      session.players[0].send(JSON.stringify({ type: "sessionUnready" }));
+      touchLobby(session);
+    }
+  }
+  if (ws.sessionCode && sessions[ws.sessionCode]) return;
+  ws.sessionCode = null;
+}
+
 function pruneIdleLobbies() {
   const now = Date.now();
   Object.keys(sessions).forEach((code) => {
@@ -283,7 +326,11 @@ async function onPlayerMessage(ws, message) {
       return;
     }
     try {
-    if ((await account.onSocket(ws, data, sessions)) === "done") return;
+    if ((await account.onSocket(ws, data, sessions)) === "done") {
+      // Misma cuenta en otro asiento: cierra esa sala y deja esta conexion limpia.
+      if (data.type === "auth" && ws.userId) await kickDuplicateUser(ws);
+      return;
+    }
 
     if (data.type === "connect") {
       ws.playerId = data?.id ?? generateCode(6);

@@ -186,7 +186,15 @@ function applyAccountDeck() {
   dm.rememberFactionDeck();
 }
 
-function acceptAccount(data) {
+function acceptAccount(data, opts) {
+  opts = opts || {};
+  // Solo en login/registro fresco: no al recuperar /api/me (eso tiraba la sala al recargar).
+  if (opts.fresh) {
+    if (typeof cancelSession === "function" && (createdSessionId || joinedSessionId)) {
+      try { cancelSession(); } catch (err) {}
+    }
+    if (typeof clearHold === "function") clearHold();
+  }
   setAccountToken(data.token || accountToken());
   accountProfile = data;
   renderAccount();
@@ -194,6 +202,7 @@ function acceptAccount(data) {
   if (typeof netSend === "function" && accountToken())
     netSend(JSON.stringify({ type: "auth", token: accountToken() }));
   if (typeof paintSeatRole === "function") paintSeatRole();
+  if (typeof syncLeaveLobby === "function") syncLeaveLobby();
 }
 
 var betWanted = false;
@@ -643,9 +652,13 @@ document.getElementById("account-register").addEventListener("click", function (
       showReward(accountError(data.error));
       return;
     }
-    acceptAccount(data);
-    showReward("");
-    document.getElementById("reward-note").classList.add("hide");
+    acceptAccount(data, { fresh: true });
+    if (data.gift && data.gift.special && data.gift.weather) {
+      showReward(tf("acc_gift", { cards: cardList([data.gift.special, data.gift.weather]) }), 7000);
+    } else {
+      showReward("");
+      document.getElementById("reward-note").classList.add("hide");
+    }
   }).catch(function () {
     accountBusy(false);
     showReward(t("acc_db"));
@@ -664,7 +677,7 @@ document.getElementById("account-login").addEventListener("click", function () {
       showReward(accountError(data.error));
       return;
     }
-    acceptAccount(data);
+    acceptAccount(data, { fresh: true });
     showReward("");
     document.getElementById("reward-note").classList.add("hide");
   }).catch(function () {

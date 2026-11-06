@@ -112,6 +112,7 @@ function showSessionCode(code) {
   const label = sessionIdDiv.querySelector(".copy-btn");
   if (label) label.textContent = t("session") + " " + createdSessionId;
   if (typeof syncChat === "function") syncChat();
+  if (typeof syncLeaveLobby === "function") syncLeaveLobby();
 }
 
 function showRestoredLobby(code, host) {
@@ -132,6 +133,7 @@ function showRestoredLobby(code, host) {
   btnConfirmJoin.classList.add("hidden");
   var lobby = document.getElementById("lobby-bar");
   if (lobby) lobby.classList.remove("hide");
+  if (typeof syncLeaveLobby === "function") syncLeaveLobby();
 }
 
 function handleLobbyMessage(event) {
@@ -536,6 +538,7 @@ function cancelSession(silent) {
   }
   if (typeof placeAccount === "function") placeAccount();
   if (typeof syncChat === "function") syncChat();
+  if (typeof syncLeaveLobby === "function") syncLeaveLobby();
 }
 
 function copySessionId() {

@@ -80,6 +80,12 @@ function weakPool(faction) {
   return pool;
 }
 
+function pickDeckFile(deck) {
+  const pool = cards.filter((card) => card.deck === deck && Number(card.count) > 0);
+  if (!pool.length) throw new Error("starter sin " + deck);
+  return pool[Math.floor(Math.random() * pool.length)].filename;
+}
+
 function starterCards(faction) {
   const owned = {};
   function add(filename, n) {
@@ -94,7 +100,14 @@ function starterCards(faction) {
   });
   shuffle(bag);
   for (let i = 0; i < 22; i++) add(bag[i], 1);
-  return owned;
+  // Regalo de bienvenida: 1 especial + 1 clima (aleatorias).
+  const gift = {
+    special: pickDeckFile("special"),
+    weather: pickDeckFile("weather"),
+  };
+  add(gift.special, 1);
+  add(gift.weather, 1);
+  return { owned: owned, gift: gift };
 }
 
 function checkStarters() {
@@ -109,21 +122,28 @@ function checkStarters() {
     let varied = false;
     let first = "";
     for (let roll = 0; roll < 24; roll++) {
-      const owned = starterCards(faction);
+      const rolled = starterCards(faction);
+      const owned = rolled.owned;
       let units = 0;
       let leaders = 0;
       let heroes = 0;
+      let special = 0;
+      let weather = 0;
       Object.keys(owned).forEach((filename) => {
         const card = cardByFile[filename].card;
-        if (card.row === "leader") leaders += owned[filename];
+        if (card.deck === "special") special += owned[filename];
+        else if (card.deck === "weather") weather += owned[filename];
+        else if (card.row === "leader") leaders += owned[filename];
         else units += owned[filename];
         if (isHero(card)) heroes += owned[filename];
-        if (card.deck === "special" || card.deck === "weather") heroes = 99;
       });
       const key = JSON.stringify(owned);
       if (!first) first = key;
       else if (key !== first) varied = true;
-      if (leaders !== 1 || units !== 22 || heroes !== 0) throw new Error("mazo inicial " + faction);
+      if (leaders !== 1 || units !== 22 || special !== 1 || weather !== 1 || heroes !== 0)
+        throw new Error("mazo inicial " + faction);
+      if (!rolled.gift || !rolled.gift.special || !rolled.gift.weather)
+        throw new Error("regalo inicial " + faction);
       seen[key] = true;
     }
     if (!varied || Object.keys(seen).length < 2) throw new Error("mazo inicial fijo " + faction);
@@ -512,7 +532,8 @@ function bumpLogin(ws) {
 }
 
 async function giveStarter(conn, userId, faction) {
-  const owned = starterCards(faction);
+  const rolled = starterCards(faction);
+  const owned = rolled.owned;
   const files = Object.keys(owned);
   for (let i = 0; i < files.length; i++) {
     await conn.query("INSERT INTO owned (user_id, filename, qty) VALUES (?,?,?)", [
@@ -521,6 +542,7 @@ async function giveStarter(conn, userId, faction) {
       owned[files[i]],
     ]);
   }
+  return rolled.gift;
 }
 
 async function handleHttp(req, res, urlPath) {
@@ -553,7 +575,7 @@ async function handleHttp(req, res, urlPath) {
           "INSERT INTO users (name, pass_hash, pass_salt, faction) VALUES (?,?,?,?)",
           [body.name, pass.hash, pass.salt, body.faction],
         );
-        await giveStarter(conn, result.insertId, body.faction);
+        const gift = await giveStarter(conn, result.insertId, body.faction);
         const token = crypto.randomBytes(24).toString("hex");
         await conn.query(
           "INSERT INTO login_tokens (token, user_id, seen_at) VALUES (?,?,UTC_TIMESTAMP())",
@@ -562,6 +584,7 @@ async function handleHttp(req, res, urlPath) {
         await conn.commit();
         const user = await publicUser(result.insertId);
         user.token = token;
+        user.gift = gift;
         send(res, 200, user);
       } catch (err) {
         await conn.rollback();
@@ -599,6 +622,8 @@ async function handleHttp(req, res, urlPath) {
         send(res, 401, { error: "bad" });
         return;
       }
+      // Un solo token activo: al entrar de nuevo se cierran las sesiones viejas de esa cuenta.
+      await pool.query("DELETE FROM login_tokens WHERE user_id=?", [rows[0].id]);
       const token = crypto.randomBytes(24).toString("hex");
       await pool.query(
         "INSERT INTO login_tokens (token, user_id, seen_at) VALUES (?,?,UTC_TIMESTAMP())",

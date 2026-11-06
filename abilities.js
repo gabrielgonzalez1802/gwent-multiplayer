@@ -1,5 +1,12 @@
 "use strict"
 
+// Prefijo de muster: "Arachas " / "Arachas- Behemoth" / "Gaunter O'Dimm - Darkness" -> misma clave.
+function musterBase(name) {
+	name = String(name || "");
+	var i = name.indexOf("-");
+	return (i === -1 ? name : name.substring(0, i)).trim();
+}
+
 function sendMedicDraw(card) {
   var name = card && card.filename ? card.filename : "";
   setTimeout(function () {
@@ -134,9 +141,8 @@ var ability_dict = {
 		name:"muster", 
 		description: "Find any cards with the same name in your deck and play them instantly. ",
 		placed: async (card) => {
-			let i = card.name.indexOf('-');
-			let cardName = i === -1 ?  card.name : card.name.substring(0, i);
-			let pred = c => c.name.startsWith(cardName);
+			let cardName = musterBase(card.name);
+			let pred = c => musterBase(c.name) === cardName;
 			let units = card.holder.hand.getCards(pred).map(x => [card.holder.hand, x])
 			.concat(card.holder.deck.getCards(pred).map( x => [card.holder.deck, x] ) );
 			if (units.length === 0)
@@ -161,8 +167,8 @@ var ability_dict = {
 		name: "medic",
 		description: "Choose one card from your discard pile and play it instantly (no Heroes or Special Cards). ",
 		placed: async (card) => {
-			let grave = board.getRow(card, "grave", card.holder);
-			let units = card.holder.grave.findCards(c => c.isUnit());
+			let grave = card.holder.grave;
+			let units = grave.findCards(c => c.isUnit());
 			if (units.length <= 0)
 				return;
 			let wrapper = {card : null};
@@ -174,10 +180,18 @@ var ability_dict = {
 				wrapper.card = grave.findCardsRandom(c => c.isUnit())[0];
 				sendMedicDraw(wrapper.card);
 			} else {
-				await ui.queueCarousel(card.holder.grave, 1, (c, i) => wrapper.card=c.cards[i], c => c.isUnit(), true);
+				// Accion con nombre fijo: el carrusel no reenvia medicDraw (evita carta duplicada / desfasada).
+				await ui.queueCarousel(grave, 1, function medicPick(c, i) {
+					wrapper.card = c.cards[i];
+					return wrapper.card;
+				}, c => c.isUnit(), true);
 				sendMedicDraw(wrapper.card);
 			}
 			let res = wrapper.card;
+			if (!res || !res.isUnit || !res.isUnit()) return;
+			if (grave.cards.indexOf(res) < 0) {
+				res = grave.findCards(c => c.isUnit() && c.filename === res.filename)[0];
+			}
 			if (!res) return;
 			grave.removeCard(res);
 			grave.addCard(res);
@@ -280,7 +294,7 @@ var ability_dict = {
 			}
 			let container = new CardContainer();
 			container.cards = card.holder.opponent().hand.findCardsRandom(() => true, 3);
-			Carousel.curr.cancel();
+			if (Carousel.curr) Carousel.curr.cancel();
 			await ui.viewCardsInContainer(container);
 		},
 		weight: card => {
@@ -322,7 +336,7 @@ var ability_dict = {
 				return;
 			}
 
-			Carousel.curr.cancel();
+			if (Carousel.curr) Carousel.curr.cancel();
 			await ui.queueCarousel(grave, 1, (c,i) => {
 				let newCard = c.cards[i];
 				newCard.holder = card.holder;
@@ -355,19 +369,21 @@ var ability_dict = {
 		name: "Eredin : Bringer of Death",
 		description: "Restore a card from your discard pile to your hand.",
 		activated: async card => {
-			if (!card.holder.grave.cards.length) {
-				card.holder.tag === "me" ? player_me.endRound() : player_op.endRound()
-				return
-			}
+			// Cementerio vacio: gasta el lider, no quita gema (antes llamaba endRound).
+			if (!card.holder.grave.cards.length) return;
 			
 			let newCard;
 			if (card.holder.controller instanceof ControllerAI) {
 				newCard = card.holder.controller.medic(card, card.holder.grave);
 			} else if (card.holder.controller instanceof ControllerOponent) {
-				newCard = await waitMedicDraw(player_op.grave);
+				newCard = await waitMedicDraw(card.holder.grave);
 			} else {
-				Carousel.curr.exit();
-				await ui.queueCarousel(card.holder.grave, 1, (c,i) => newCard = c.cards[i], c => c.isUnit(), false, false);
+				if (Carousel.curr) Carousel.curr.exit();
+				await ui.queueCarousel(card.holder.grave, 1, function medicHandPick(c, i) {
+					newCard = c.cards[i];
+					return newCard;
+				}, () => true, false, false);
+				sendMedicDraw(newCard);
 			}
 			if (newCard)
 				await board.toHand(newCard, card.holder.grave);
@@ -410,7 +426,7 @@ var ability_dict = {
 				});
 
 				return;
-			} else
+			} else if (Carousel.curr)
 				Carousel.curr.exit();
 			await ui.queueCarousel(hand, 2, (c,i) => board.toGrave(c.cards[i], c), () => true);
 			await ui.queueCarousel(deck, 1, (c,i) => {
@@ -462,7 +478,7 @@ var ability_dict = {
 				});
 				board.toWeather(card, deck);
 			} else {
-				Carousel.curr.cancel();
+				if (Carousel.curr) Carousel.curr.cancel();
 				await ui.queueCarousel(deck, 1, (c,i) => board.toWeather(c.cards[i], deck), c => c.faction === "weather", true);
 			}
 		},
@@ -540,8 +556,10 @@ var ability_dict = {
 	crach_an_craite: {
 		description: "Shuffle all cards from each player's graveyard back into their decks.",
 		activated: async card => {
-			Promise.all(card.holder.grave.cards.map(c => board.toDeck(c, card.holder.grave)));
-			await Promise.all(card.holder.opponent().grave.cards.map(c => board.toDeck(c, card.holder.opponent().grave)));
+			var mine = card.holder.grave.cards.slice();
+			var theirs = card.holder.opponent().grave.cards.slice();
+			await Promise.all(mine.map(c => board.toDeck(c, card.holder.grave)));
+			await Promise.all(theirs.map(c => board.toDeck(c, card.holder.opponent().grave)));
 		},
 		weight: (card, ai, max, data) => {
 			if( game.roundCount < 2)
@@ -562,3 +580,11 @@ var ability_dict = {
 		placed: card => board.row.filter((c,i) => card.holder === player_me ^ i<3).forEach(r => r.halfWeather = true)
 	}
 };
+
+(function () {
+	if (musterBase("Arachas ") !== "Arachas") throw new Error("muster arachas");
+	if (musterBase("Arachas- Behemoth") !== "Arachas") throw new Error("muster behemoth");
+	if (musterBase("Gaunter O'Dimm") !== "Gaunter O'Dimm") throw new Error("muster gaunter");
+	if (musterBase("Gaunter O'Dimm - Darkness") !== "Gaunter O'Dimm") throw new Error("muster darkness");
+	if (musterBase("Cerys - Clan Drummond Shield Maiden") !== "Cerys") throw new Error("muster cerys");
+})();
