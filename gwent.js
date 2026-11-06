@@ -5812,11 +5812,14 @@ function openMenuFor(el) {
 }
 
 document.querySelectorAll("#top-menu .menu-drop-btn").forEach(function (btn) {
-  btn.addEventListener("click", function () {
+  btn.addEventListener("click", function (event) {
+    event.stopPropagation();
     var drop = btn.parentElement;
     var was = drop.classList.contains("open");
-    closeMenus();
-    if (!was) drop.classList.add("open");
+    // Mantener el panel del menu abierto al cambiar de seccion (Jugar/Online/Limites/Cuenta).
+    closeMenus(drop);
+    if (was) drop.classList.remove("open");
+    else drop.classList.add("open");
     if (!was && drop.id === "online-menu" && typeof ensureOnline === "function") {
       if (!createdSessionId && !joinedSessionId) {
         document.getElementById("create-game").classList.remove("hidden");
