@@ -5786,11 +5786,17 @@ function refreshLocalized() {
   if (navBtn) navBtn.setAttribute("aria-label", t("menu_nav"));
 }
 
-function closeMenus(except) {
+// Secciones (Jugar/Online/...) y hamburguesa van por caminos distintos:
+// closeDrops nunca toca #nav; closeNav cierra ambos.
+function closeDrops(except) {
   var drops = document.querySelectorAll("#top-menu .menu-drop.open");
   for (var i = 0; i < drops.length; i++) {
     if (drops[i] !== except) drops[i].classList.remove("open");
   }
+}
+
+function closeMenus(except) {
+  closeDrops(except);
   if (!except) {
     var nav = document.getElementById("nav");
     if (nav) nav.classList.remove("open");
@@ -5800,27 +5806,37 @@ function closeMenus(except) {
 function closeNav() {
   var nav = document.getElementById("nav");
   if (nav) nav.classList.remove("open");
-  closeMenus();
+  closeDrops();
 }
 
 function openMenuFor(el) {
   var drop = el && el.closest ? el.closest(".menu-drop") : null;
-  closeMenus(drop);
+  closeDrops(drop);
   if (drop) drop.classList.add("open");
   var nav = document.getElementById("nav");
   if (nav && el && nav.contains(el)) nav.classList.add("open");
 }
 
+function toggleMenuDrop(drop) {
+  if (!drop) return;
+  var was = drop.classList.contains("open");
+  closeDrops(drop);
+  if (was) drop.classList.remove("open");
+  else drop.classList.add("open");
+}
+
+function clickInsideNav(event) {
+  return !!(event && event.target && event.target.closest && event.target.closest("#nav, #tutorial-panel"));
+}
+
 document.querySelectorAll("#top-menu .menu-drop-btn").forEach(function (btn) {
   btn.addEventListener("click", function (event) {
+    event.preventDefault();
     event.stopPropagation();
-    var drop = btn.parentElement;
-    var was = drop.classList.contains("open");
-    // Mantener el panel del menu abierto al cambiar de seccion (Jugar/Online/Limites/Cuenta).
-    closeMenus(drop);
-    if (was) drop.classList.remove("open");
-    else drop.classList.add("open");
-    if (!was && drop.id === "online-menu" && typeof ensureOnline === "function") {
+    var drop = btn.closest ? btn.closest(".menu-drop") : btn.parentElement;
+    var was = drop && drop.classList.contains("open");
+    toggleMenuDrop(drop);
+    if (!was && drop && drop.id === "online-menu" && typeof ensureOnline === "function") {
       if (!createdSessionId && !joinedSessionId) {
         document.getElementById("create-game").classList.remove("hidden");
         document.getElementById("join-game").classList.remove("hidden");
@@ -5830,10 +5846,8 @@ document.querySelectorAll("#top-menu .menu-drop-btn").forEach(function (btn) {
   });
 });
 document.addEventListener("click", function (event) {
-  if (event.target.closest && event.target.closest("#nav, #tutorial-panel")) return;
-  closeMenus();
-  var nav = document.getElementById("nav");
-  if (nav) nav.classList.remove("open");
+  if (clickInsideNav(event)) return;
+  closeNav();
 });
 
 var navPanel = document.getElementById("nav-panel");
@@ -5842,15 +5856,21 @@ if (navPanel && topMenu) navPanel.insertBefore(topMenu, navPanel.firstChild);
 var navOpen = document.getElementById("nav-open");
 if (navOpen) {
   navOpen.addEventListener("click", function (event) {
+    event.preventDefault();
     event.stopPropagation();
-    document.getElementById("nav").classList.toggle("open");
+    var nav = document.getElementById("nav");
+    if (!nav) return;
+    if (nav.classList.contains("open")) closeNav();
+    else nav.classList.add("open");
   });
   navOpen.setAttribute("aria-label", t("menu_nav"));
 }
 var navTools = document.getElementById("nav-tools");
 if (navTools) {
-  navTools.addEventListener("click", function () {
-    document.getElementById("nav").classList.remove("open");
+  navTools.addEventListener("click", function (event) {
+    // Ayuda/reglas/idioma: cierran el panel, no dejan secciones colgando.
+    if (event.target === navTools) return;
+    closeNav();
   });
 }
 

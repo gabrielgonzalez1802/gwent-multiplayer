@@ -858,8 +858,11 @@ document.getElementById("chat-open").addEventListener("click", function (event) 
   panel.classList.toggle("hide");
   hideChatToast();
   document.getElementById("chat-open").classList.remove("unread");
-  var nav = document.getElementById("nav");
-  if (nav) nav.classList.remove("open");
+  if (typeof closeNav === "function") closeNav();
+  else {
+    var nav = document.getElementById("nav");
+    if (nav) nav.classList.remove("open");
+  }
   if (panel.classList.contains("hide")) document.getElementById("chat-emoji-box").classList.add("hide");
   else document.getElementById("chat-input").focus();
 });

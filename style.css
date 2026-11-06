@@ -2946,22 +2946,28 @@ main.noclick .leader-box {
 }
 
 #top-menu.hide,
-#top-tools #top-menu.hide {
+#top-tools #top-menu.hide,
+#nav-panel #top-menu.hide {
 	display: none;
 }
 
+/* Menu dentro del hamburguesa: columna estatica (no flotante absoluta). */
+#nav-panel #top-menu,
 #top-tools #top-menu {
 	position: static;
 	flex-direction: column;
 	align-items: stretch;
 	width: 100%;
+	gap: 4px;
 }
 
+#nav-panel .menu-drop-btn,
 #top-tools .menu-drop-btn {
 	width: 100%;
 	text-align: left;
 }
 
+#nav-panel #top-menu .menu-panel,
 #top-tools #top-menu .menu-panel {
 	position: static;
 	top: auto;
