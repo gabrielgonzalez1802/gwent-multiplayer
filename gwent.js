@@ -2127,7 +2127,10 @@ class UI {
     this.toggleMusic_elem.classList.add("fade");
     this.toggleMusic_elem.addEventListener(
       "click",
-      () => this.toggleMusic(),
+      (event) => {
+        event.stopPropagation();
+        openAudioPanel();
+      },
       false,
     );
   }
@@ -2179,10 +2182,7 @@ class UI {
 
   // Called when client toggles the music
   toggleMusic() {
-    audioPrefs.music = !audioPrefs.music;
-    saveAudioPrefs();
-    applyAudioPrefs();
-    if (audioPrefs.music) iniciarMusica();
+    openAudioPanel();
   }
 
   // Enables or disables backgorund music
@@ -4794,6 +4794,17 @@ function bumpAudioVol(delta) {
   applyAudioPrefs();
 }
 
+function showAudioBox() {
+  var box = document.getElementById("audio-box");
+  if (box) box.classList.remove("hide");
+}
+
+function openAudioPanel() {
+  showAudioBox();
+  var panel = document.getElementById("audio-panel");
+  if (panel) panel.classList.remove("hide");
+}
+
 function bindAudioControls() {
   var open = document.getElementById("audio-open");
   var panel = document.getElementById("audio-panel");
@@ -5375,6 +5386,7 @@ function inicio() {
   for (var i = 0; i < classe.length; i++) classe[i].style.display = "none";
   document.getElementById("top-menu").classList.remove("hide");
   document.getElementById("top-tools").classList.remove("hide");
+  showAudioBox();
   iniciou = true;
   tocar("menu_opening", false);
 }

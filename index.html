@@ -440,8 +440,28 @@
       id="toggle-music"
       class="center music-customization"
       style="display: none"
+      title="Audio"
     >
       ♫
+    </div>
+    <div id="audio-box" class="hide">
+      <button id="audio-open" type="button" aria-label="Audio" title="Audio" data-i18n-title="audio_title">♫</button>
+      <div id="audio-panel" class="hide">
+        <label class="audio-row">
+          <input id="audio-music" type="checkbox" checked />
+          <span data-i18n="audio_music">Music</span>
+        </label>
+        <label class="audio-row">
+          <input id="audio-sfx" type="checkbox" checked />
+          <span data-i18n="audio_sfx">Effects</span>
+        </label>
+        <div class="audio-row audio-vol-row">
+          <button id="audio-vol-down" type="button" aria-label="-">−</button>
+          <input id="audio-vol" type="range" min="0" max="100" value="70" />
+          <button id="audio-vol-up" type="button" aria-label="+">+</button>
+          <span id="audio-vol-label">70%</span>
+        </div>
+      </div>
     </div>
     <button id="start-game" class="hidden" data-i18n="ready">Ready</button>
     <div id="oponent-ready" class="hidden disabled">
@@ -459,25 +479,6 @@
     <div id="top-tools" class="hide">
       <p id="seat-role-live" class="hide"></p>
       <div id="turn-clock" class="hide">1:00</div>
-      <div id="audio-box">
-        <button id="audio-open" type="button" aria-label="Audio" title="Audio">♫</button>
-        <div id="audio-panel" class="hide">
-          <label class="audio-row">
-            <input id="audio-music" type="checkbox" checked />
-            <span data-i18n="audio_music">Music</span>
-          </label>
-          <label class="audio-row">
-            <input id="audio-sfx" type="checkbox" checked />
-            <span data-i18n="audio_sfx">Effects</span>
-          </label>
-          <div class="audio-row audio-vol-row">
-            <button id="audio-vol-down" type="button" aria-label="-">−</button>
-            <input id="audio-vol" type="range" min="0" max="100" value="70" />
-            <button id="audio-vol-up" type="button" aria-label="+">+</button>
-            <span id="audio-vol-label">70%</span>
-          </div>
-        </div>
-      </div>
       <button id="chat-open" type="button" class="hide" aria-label="Chat" title="Chat">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 3V5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 9h8M8 12h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>

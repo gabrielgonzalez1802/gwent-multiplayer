@@ -172,29 +172,36 @@ html {
 }
 
 #audio-box {
-	position: relative;
-	z-index: 4001;
+	position: fixed;
+	top: 12px;
+	left: 12px;
+	z-index: 4100;
+}
+
+#audio-box.hide {
+	display: none;
 }
 
 #audio-open {
-	width: 36px;
-	height: 36px;
+	width: 40px;
+	height: 40px;
 	padding: 0;
 	border: 1px solid rgba(180, 160, 90, 0.55);
-	background: rgba(12, 12, 12, 0.88);
+	background: rgba(12, 12, 12, 0.92);
 	color: goldenrod;
-	font-size: 18px;
+	font-size: 20px;
 	line-height: 1;
 	cursor: pointer;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 #audio-panel {
 	position: absolute;
 	top: calc(100% + 6px);
-	right: 0;
-	min-width: 200px;
+	left: 0;
+	min-width: 220px;
 	padding: 10px 12px;
-	background: rgba(12, 12, 12, 0.94);
+	background: rgba(12, 12, 12, 0.96);
 	border: 1px solid rgba(180, 160, 90, 0.45);
 	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 	display: flex;
