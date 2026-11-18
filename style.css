@@ -171,6 +171,81 @@ html {
 	z-index: 86;
 }
 
+#audio-box {
+	position: relative;
+	z-index: 4001;
+}
+
+#audio-open {
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	border: 1px solid rgba(180, 160, 90, 0.55);
+	background: rgba(12, 12, 12, 0.88);
+	color: goldenrod;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+#audio-panel {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	min-width: 200px;
+	padding: 10px 12px;
+	background: rgba(12, 12, 12, 0.94);
+	border: 1px solid rgba(180, 160, 90, 0.45);
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+#audio-panel.hide {
+	display: none;
+}
+
+.audio-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	color: #ddd;
+	font-size: 13px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.audio-vol-row {
+	gap: 6px;
+}
+
+#audio-vol {
+	flex: 1;
+	min-width: 80px;
+}
+
+#audio-vol-down,
+#audio-vol-up {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid rgba(180, 160, 90, 0.4);
+	background: rgb(24, 24, 24);
+	color: #ddd;
+	font-size: 16px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+#audio-vol-label {
+	min-width: 36px;
+	text-align: right;
+	color: #ccc;
+	font-size: 12px;
+}
+
 #top-tools.hide {
 	display: none;
 }
