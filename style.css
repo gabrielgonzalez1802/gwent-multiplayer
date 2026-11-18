@@ -2923,15 +2923,17 @@ main.noclick .leader-box {
 	display: block;
 }
 
+#deck-stats.capped,
 #deck-stats.custom {
 	height: auto;
 }
 
-#deck-stats > p:nth-child(12) {
+#deck-stats > p:nth-child(12),
+#deck-stats > p:nth-child(14) {
 	background-image: url(img/icons/deck_stats_unit.png);
 }
 
-#deck-stats > p:nth-child(14) {
+#deck-stats > p:nth-child(16) {
 	background-image: url(img/icons/deck_stats_special.png);
 }
 

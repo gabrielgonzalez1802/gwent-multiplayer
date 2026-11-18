@@ -89,10 +89,11 @@ function cleanRules(raw) {
     minUnits: 22,
     maxUnits: null,
     maxDeck: null,
-    maxSpecial: 10,
+    maxSpecial: 5,
     maxHeroes: null,
-    maxSpies: null,
-    maxStrength: null,
+    maxSpies: 2,
+    maxMedics: 2,
+    maxStrength: 130,
     maxWeather: null,
   };
   if (!raw || typeof raw !== "object") return out;
@@ -105,8 +106,11 @@ function cleanRules(raw) {
 }
 (function () {
   const sample = cleanRules({ minUnits: 10, maxHeroes: 1, maxWeather: 0, junk: 9 });
-  if (sample.minUnits !== 10 || sample.maxHeroes !== 1 || sample.maxWeather !== 0 || sample.maxSpecial !== 10)
+  if (sample.minUnits !== 10 || sample.maxHeroes !== 1 || sample.maxWeather !== 0 || sample.maxSpecial !== 5)
     throw new Error("reglas");
+  const blank = cleanRules(null);
+  if (blank.maxSpies !== 2 || blank.maxMedics !== 2 || blank.maxStrength !== 130)
+    throw new Error("reglas clasicas");
 })();
 
 function pushRules(session, except) {

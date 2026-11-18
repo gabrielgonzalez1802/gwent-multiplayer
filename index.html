@@ -282,13 +282,15 @@
         <p data-i18n="stat_units">Number of Unit Cards</p>
         <p>0</p>
         <p data-i18n="stat_special">Special Cards</p>
-        <p>0/10</p>
+        <p>0/5</p>
         <p data-i18n="stat_strength">Total Unit Card Strength</p>
-        <p>0</p>
+        <p>0/130</p>
         <p data-i18n="stat_heroes">Hero Cards</p>
         <p>0</p>
-        <p class="custom-stat" data-i18n="stat_spies">Spies</p>
-        <p class="custom-stat" id="stat-spies-value">0</p>
+        <p class="cap-stat" data-i18n="stat_spies">Spies</p>
+        <p class="cap-stat" id="stat-spies-value">0/2</p>
+        <p class="cap-stat" data-i18n="stat_medics">Medics</p>
+        <p class="cap-stat" id="stat-medics-value">0/2</p>
         <p class="custom-stat" data-i18n="stat_weather">Weather cards</p>
         <p class="custom-stat" id="stat-weather-value">0</p>
       </div>
@@ -343,12 +345,13 @@
             <label><span data-i18n="rule_units">Min. units</span><input id="rule-units" type="number" min="0" max="60" value="22"></label>
             <label><span data-i18n="rule_units_max">Max. units</span><input id="rule-units-max" type="number" min="0" max="60" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
             <label><span data-i18n="rule_deck">Max. cards</span><input id="rule-deck" type="number" min="0" max="80" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-            <label><span data-i18n="rule_special">Max. specials</span><input id="rule-special" type="number" min="0" max="20" value="10"></label>
+            <label><span data-i18n="rule_special">Max. specials</span><input id="rule-special" type="number" min="0" max="20" value="5"></label>
             <label><span data-i18n="rule_weather">Weather</span><select id="rule-weather"><option value="yes" data-i18n="yes">Yes</option><option value="no" data-i18n="no">No</option></select></label>
             <label id="rule-weather-max-row"><span data-i18n="rule_weather_max">Max. weather</span><input id="rule-weather-max" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
             <label><span data-i18n="rule_heroes">Max. heroes</span><input id="rule-heroes" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-            <label><span data-i18n="rule_spies">Max. spies</span><input id="rule-spies" type="number" min="0" max="20" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
-            <label><span data-i18n="rule_strength">Max. strength</span><input id="rule-strength" type="number" min="0" max="400" placeholder="no cap" data-i18n-placeholder="rule_blank"></label>
+            <label><span data-i18n="rule_spies">Max. spies</span><input id="rule-spies" type="number" min="0" max="20" value="2"></label>
+            <label><span data-i18n="rule_medics">Max. medics</span><input id="rule-medics" type="number" min="0" max="20" value="2"></label>
+            <label><span data-i18n="rule_strength">Max. strength</span><input id="rule-strength" type="number" min="0" max="400" value="130"></label>
             <button id="rule-reset" type="button" data-i18n="rule_reset">Classic limits</button>
           </div>
         </div>

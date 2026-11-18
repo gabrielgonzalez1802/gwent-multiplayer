@@ -2872,6 +2872,8 @@ function deckProblems(stats, rules) {
     problems.push("heroes");
   if (rules.maxSpies != null && stats.spy > rules.maxSpies)
     problems.push("spies");
+  if (rules.maxMedics != null && (stats.medic || 0) > rules.maxMedics)
+    problems.push("medics");
   if (rules.maxStrength != null && stats.strength > rules.maxStrength)
     problems.push("strength");
   return problems;
@@ -2925,6 +2927,7 @@ function applySessionRules(data) {
   setRuleInput("rule-special", rules.maxSpecial);
   setRuleInput("rule-heroes", rules.maxHeroes);
   setRuleInput("rule-spies", rules.maxSpies);
+  setRuleInput("rule-medics", rules.maxMedics);
   setRuleInput("rule-strength", rules.maxStrength);
   if (rules.maxWeather === 0) {
     document.getElementById("rule-weather").value = "no";
@@ -2945,39 +2948,31 @@ function applySessionRules(data) {
 }
 
 function activeRules() {
-  if (!customMode) {
-    return {
-      minUnits: 22,
-      maxUnits: null,
-      maxDeck: null,
-      maxSpecial: 10,
-      maxHeroes: null,
-      maxSpies: null,
-      maxStrength: null,
-      maxWeather: null,
-    };
-  }
+  if (!customMode) return classicLimits();
   return {
     minUnits: readRule("rule-units", 22),
     maxUnits: readCap("rule-units-max"),
     maxDeck: readCap("rule-deck"),
-    maxSpecial: readRule("rule-special", 10),
+    maxSpecial: readRule("rule-special", 5),
     maxHeroes: readCap("rule-heroes"),
     maxSpies: readCap("rule-spies"),
+    maxMedics: readCap("rule-medics"),
     maxStrength: readCap("rule-strength"),
     maxWeather: weatherCap(),
   };
 }
 
+// Limites tipo TW3 clasico: 1 lider (hueco unico), 22 unidades, 5 especiales, 2 espia, 2 medico, fuerza 130.
 function classicLimits() {
   return {
     minUnits: 22,
     maxUnits: null,
     maxDeck: null,
-    maxSpecial: 10,
+    maxSpecial: 5,
     maxHeroes: null,
-    maxSpies: null,
-    maxStrength: null,
+    maxSpies: 2,
+    maxMedics: 2,
+    maxStrength: 130,
     maxWeather: null,
   };
 }
@@ -2997,7 +2992,7 @@ function cpuProfile(level) {
 
 function tightenRules(base, extra) {
   const out = Object.assign({}, base);
-  ["maxUnits", "maxDeck", "maxSpecial", "maxHeroes", "maxSpies", "maxStrength", "maxWeather"].forEach(
+  ["maxUnits", "maxDeck", "maxSpecial", "maxHeroes", "maxSpies", "maxMedics", "maxStrength", "maxWeather"].forEach(
     function (key) {
       if (extra[key] == null) return;
       out[key] = out[key] == null ? extra[key] : Math.min(out[key], extra[key]);
@@ -3023,6 +3018,7 @@ function factionCopies(faction) {
         weather: data.deck === "weather",
         hero: !special && ability.includes("hero"),
         spy: !special && ability.includes("spy"),
+        medic: !special && ability.includes("medic"),
         strength: special ? 0 : Number(data.strength) || 0,
       });
     }
@@ -3045,8 +3041,10 @@ function buildLevelDeck(copies, rules, strong) {
   const chosen = [];
   let hero = 0;
   let spy = 0;
+  let medic = 0;
   let weather = 0;
   let spec = 0;
+  let strength = 0;
   const unitTarget =
     rules.maxUnits == null ? (strong ? units.length : rules.minUnits) : rules.maxUnits;
   for (let i = 0; i < units.length; i++) {
@@ -3056,9 +3054,13 @@ function buildLevelDeck(copies, rules, strong) {
     if (rules.maxDeck != null && chosen.length >= rules.maxDeck) break;
     if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes) continue;
     if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies) continue;
+    if (rules.maxMedics != null && card.medic && medic + 1 > rules.maxMedics) continue;
+    if (rules.maxStrength != null && strength + card.strength > rules.maxStrength) continue;
     chosen.push(card);
     if (card.hero) hero++;
     if (card.spy) spy++;
+    if (card.medic) medic++;
+    strength += card.strength;
   }
   if (!strong && rules.maxHeroes > 0 && hero < rules.maxHeroes) {
     const weakestHero = units
@@ -3112,6 +3114,7 @@ function buildLevelDeck(copies, rules, strong) {
       weather: false,
       hero: i < 5,
       spy: i >= 5 && i < 9,
+      medic: false,
       strength: i < 5 ? 10 : 2,
     });
   const easy = buildLevelDeck(copies, tightenRules(classicLimits(), cpuProfile("principiante")), false);
@@ -3138,7 +3141,7 @@ function trimToRules(cards, rules) {
     return String(c.ability || "").split(" ");
   }
   function tally() {
-    const s = { special: 0, hero: 0, spy: 0, strength: 0, units: 0, total: list.length, weather: 0 };
+    const s = { special: 0, hero: 0, spy: 0, medic: 0, strength: 0, units: 0, total: list.length, weather: 0 };
     list.forEach(function (c) {
       if (isSpecial(c)) {
         s.special++;
@@ -3149,6 +3152,7 @@ function trimToRules(cards, rules) {
       s.strength += Number(c.strength) || 0;
       if (parts(c).includes("hero")) s.hero++;
       if (parts(c).includes("spy")) s.spy++;
+      if (parts(c).includes("medic")) s.medic++;
     });
     return s;
   }
@@ -3220,6 +3224,14 @@ function trimToRules(cards, rules) {
   )
     s = tally();
   while (
+    rules.maxMedics != null &&
+    s.medic > rules.maxMedics &&
+    drop(function (c) {
+      return parts(c).includes("medic");
+    })
+  )
+    s = tally();
+  while (
     rules.maxStrength != null &&
     s.strength > rules.maxStrength &&
     dropStrongest()
@@ -3245,19 +3257,14 @@ function trimToRules(cards, rules) {
 }
 
 (function checkDeckRules() {
-  const classic = {
-    minUnits: 22,
-    maxUnits: null,
-    maxDeck: null,
-    maxSpecial: 10,
-    maxHeroes: null,
-    maxSpies: null,
-    maxStrength: null,
-  };
-  const full = { units: 22, total: 32, special: 10, hero: 9, spy: 4, strength: 200 };
-  if (deckProblems(full, classic).length)
+  const classic = classicLimits();
+  const ok = { units: 22, total: 27, special: 5, hero: 4, spy: 2, medic: 2, strength: 130 };
+  if (deckProblems(ok, classic).length)
     console.error("classic deck rejected");
-  const wet = { units: 22, total: 24, special: 2, hero: 0, spy: 0, strength: 40, weather: 2 };
+  const fat = { units: 22, total: 32, special: 10, hero: 9, spy: 4, medic: 3, strength: 200 };
+  if (!deckProblems(fat, classic).length)
+    console.error("classic caps missing");
+  const wet = { units: 22, total: 24, special: 2, hero: 0, spy: 0, medic: 0, strength: 40, weather: 2 };
   if (deckProblems(wet, Object.assign({}, classic, { maxWeather: 0 })).join() !== "weather")
     console.error("weather cap");
   const weatherCopies = [];
@@ -3287,8 +3294,8 @@ function trimToRules(cards, rules) {
     },
   );
   if (!noWeather || noWeather.stats.weather !== 0) console.error("random weather");
-  const short = { units: 21, total: 32, special: 11, hero: 9, spy: 4, strength: 200 };
-  if (deckProblems(short, classic).join() !== "units,special")
+  const short = { units: 21, total: 28, special: 6, hero: 0, spy: 3, medic: 0, strength: 140 };
+  if (deckProblems(short, classic).join() !== "units,special,spies,strength")
     console.error("classic deck problems");
   const capped = {
     minUnits: 22,
@@ -3297,12 +3304,20 @@ function trimToRules(cards, rules) {
     maxSpecial: 10,
     maxHeroes: 2,
     maxSpies: 1,
+    maxMedics: 1,
     maxStrength: 100,
   };
-  if (deckProblems(full, capped).join() !== "heroes,spies,strength")
+  if (deckProblems(fat, capped).join() !== "heroes,spies,medics,strength")
     console.error("custom deck problems");
-  const sized = Object.assign({}, capped, { maxUnits: 20, maxDeck: 25, maxHeroes: null, maxSpies: null, maxStrength: null });
-  const sizedStats = { units: 22, total: 32, special: 10, hero: 2, spy: 1, strength: 90 };
+  const sized = Object.assign({}, capped, {
+    maxUnits: 20,
+    maxDeck: 25,
+    maxHeroes: null,
+    maxSpies: null,
+    maxMedics: null,
+    maxStrength: null,
+  });
+  const sizedStats = { units: 22, total: 32, special: 10, hero: 2, spy: 1, medic: 0, strength: 90 };
   if (deckProblems(sizedStats, sized).join() !== "maxUnits,deck")
     console.error("deck size problems");
   const copies = [];
@@ -3312,6 +3327,7 @@ function trimToRules(cards, rules) {
       special: false,
       hero: i < 4,
       spy: i >= 4 && i < 8,
+      medic: i >= 8 && i < 11,
       strength: 5,
     });
   for (let i = 0; i < 12; i++)
@@ -3320,6 +3336,7 @@ function trimToRules(cards, rules) {
       special: true,
       hero: false,
       spy: false,
+      medic: false,
       strength: 0,
     });
   const rolled = buildRandomCounts(copies, classic, function () {
@@ -3337,6 +3354,7 @@ function trimToRules(cards, rules) {
     maxDeck: 26,
     maxHeroes: 1,
     maxSpies: 1,
+    maxMedics: 1,
     maxSpecial: 2,
   });
   const tightRoll = buildRandomCounts(copies, tight, function () {
@@ -3347,6 +3365,7 @@ function trimToRules(cards, rules) {
     deckProblems(tightRoll.stats, tight).length ||
     tightRoll.stats.hero > 1 ||
     tightRoll.stats.spy > 1 ||
+    (tightRoll.stats.medic || 0) > 1 ||
     tightRoll.stats.total > 26
   )
     console.error("random tight");
@@ -3381,6 +3400,7 @@ function buildRandomCounts(copies, rules, rng) {
     const chosen = [];
     let hero = 0;
     let spy = 0;
+    let medic = 0;
     let strength = 0;
     let unitCount = 0;
     for (let i = 0; i < units.length && unitCount < unitTarget; i++) {
@@ -3389,12 +3409,15 @@ function buildRandomCounts(copies, rules, rng) {
         continue;
       if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies)
         continue;
+      if (rules.maxMedics != null && card.medic && medic + 1 > rules.maxMedics)
+        continue;
       if (rules.maxStrength != null && strength + card.strength > rules.maxStrength)
         continue;
       chosen.push(card);
       unitCount++;
       if (card.hero) hero++;
       if (card.spy) spy++;
+      if (card.medic) medic++;
       strength += card.strength;
     }
     if (unitCount < rules.minUnits) return null;
@@ -3422,6 +3445,7 @@ function buildRandomCounts(copies, rules, rng) {
       special: spec,
       hero: hero,
       spy: spy,
+      medic: medic,
       strength: strength,
       weather: weather,
     };
@@ -3452,6 +3476,7 @@ function weakestUnitStrength(units, rules) {
   });
   let hero = 0;
   let spy = 0;
+  let medic = 0;
   let strength = 0;
   let n = 0;
   for (let i = 0; i < order.length && n < rules.minUnits; i++) {
@@ -3459,9 +3484,12 @@ function weakestUnitStrength(units, rules) {
     if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes)
       continue;
     if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies) continue;
+    if (rules.maxMedics != null && card.medic && medic + 1 > rules.maxMedics)
+      continue;
     n++;
     if (card.hero) hero++;
     if (card.spy) spy++;
+    if (card.medic) medic++;
     strength += card.strength;
   }
   if (n < rules.minUnits) return null;
@@ -3545,9 +3573,10 @@ function randomLimitText(copies, rules, factionName) {
     minUnits: 22,
     maxUnits: 10,
     maxDeck: 15,
-    maxSpecial: 10,
+    maxSpecial: 5,
     maxHeroes: null,
     maxSpies: null,
+    maxMedics: null,
     maxStrength: null,
   };
   const text = randomLimitText(copies, rules, "Test");
@@ -3632,10 +3661,12 @@ class DeckMaker {
       document.getElementById("rule-units").value = 22;
       document.getElementById("rule-units-max").value = "";
       document.getElementById("rule-deck").value = "";
-      document.getElementById("rule-special").value = 10;
+      const classic = classicLimits();
+      document.getElementById("rule-special").value = classic.maxSpecial;
       document.getElementById("rule-heroes").value = "";
-      document.getElementById("rule-spies").value = "";
-      document.getElementById("rule-strength").value = "";
+      document.getElementById("rule-spies").value = classic.maxSpies;
+      document.getElementById("rule-medics").value = classic.maxMedics;
+      document.getElementById("rule-strength").value = classic.maxStrength;
       document.getElementById("rule-weather").value = "yes";
       document.getElementById("rule-weather-max").value = "";
       syncWeatherField();
@@ -3667,6 +3698,7 @@ class DeckMaker {
           weather: data.deck === "weather",
           hero: !special && ability.includes("hero"),
           spy: !special && ability.includes("spy"),
+          medic: !special && ability.includes("medic"),
           strength: special ? 0 : Number(data.strength) || 0,
         });
       }
@@ -3837,6 +3869,7 @@ class DeckMaker {
       strength = 0,
       hero = 0,
       spy = 0,
+      medic = 0,
       weather = 0;
     for (let x of this.deck) {
       let card_data = card_dict[x.index];
@@ -3853,6 +3886,7 @@ class DeckMaker {
       const ability = String(card_data.ability || "").split(" ");
       if (ability.includes("hero")) hero += x.count;
       if (ability.includes("spy")) spy += x.count;
+      if (ability.includes("medic")) medic += x.count;
     }
     this.stats = {
       total: total,
@@ -3861,6 +3895,7 @@ class DeckMaker {
       strength: strength,
       hero: hero,
       spy: spy,
+      medic: medic,
       weather: weather,
     };
     this.updateStats();
@@ -3871,21 +3906,10 @@ class DeckMaker {
     let stats = document.getElementById("deck-stats");
     const rules = activeRules();
     stats.classList.toggle("custom", customMode);
+    stats.classList.toggle("capped", true);
     const spyEl = document.getElementById("stat-spies-value");
-    if (!customMode) {
-      stats.children[1].innerHTML = this.stats.total;
-      stats.children[1].style.color = "";
-      stats.children[3].innerHTML =
-        this.stats.units + (this.stats.units < 22 ? "/22" : "");
-      stats.children[5].innerHTML = this.stats.special + "/10";
-      stats.children[7].innerHTML = this.stats.strength;
-      stats.children[9].innerHTML = this.stats.hero;
-      stats.children[3].style.color = this.stats.units < 22 ? "red" : "";
-      stats.children[5].style.color = this.stats.special > 10 ? "red" : "";
-      stats.children[7].style.color = "";
-      stats.children[9].style.color = "";
-      return;
-    }
+    const medicEl = document.getElementById("stat-medics-value");
+    const weatherEl = document.getElementById("stat-weather-value");
     stats.children[1].innerHTML =
       this.stats.total + (rules.maxDeck == null ? "" : "/" + rules.maxDeck);
     stats.children[1].style.color =
@@ -3904,7 +3928,9 @@ class DeckMaker {
     if (spyEl)
       spyEl.innerHTML =
         this.stats.spy + (rules.maxSpies == null ? "" : "/" + rules.maxSpies);
-    const weatherEl = document.getElementById("stat-weather-value");
+    if (medicEl)
+      medicEl.innerHTML =
+        this.stats.medic + (rules.maxMedics == null ? "" : "/" + rules.maxMedics);
     if (weatherEl)
       weatherEl.innerHTML =
         this.stats.weather +
@@ -3925,6 +3951,9 @@ class DeckMaker {
     if (spyEl)
       spyEl.style.color =
         rules.maxSpies != null && this.stats.spy > rules.maxSpies ? "red" : "";
+    if (medicEl)
+      medicEl.style.color =
+        rules.maxMedics != null && this.stats.medic > rules.maxMedics ? "red" : "";
     if (weatherEl)
       weatherEl.style.color =
         rules.maxWeather != null && this.stats.weather > rules.maxWeather
@@ -3933,12 +3962,6 @@ class DeckMaker {
   }
 
   deckWarning() {
-    if (!customMode) {
-      let warning = "";
-      if (this.stats.units < 22) warning += t("need_units");
-      if (this.stats.special > 10) warning += t("need_special_max");
-      return warning;
-    }
     const rules = activeRules();
     let warning = "";
     if (rules.maxUnits != null && rules.maxUnits < rules.minUnits)
@@ -3955,6 +3978,8 @@ class DeckMaker {
       warning += tf("need_heroes", { n: rules.maxHeroes });
     if (rules.maxSpies != null && this.stats.spy > rules.maxSpies)
       warning += tf("need_spies", { n: rules.maxSpies });
+    if (rules.maxMedics != null && this.stats.medic > rules.maxMedics)
+      warning += tf("need_medics", { n: rules.maxMedics });
     if (rules.maxStrength != null && this.stats.strength > rules.maxStrength)
       warning += tf("need_strength", { n: rules.maxStrength });
     if (rules.maxWeather === 0 && this.stats.weather > 0)
