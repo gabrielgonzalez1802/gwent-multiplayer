@@ -2124,15 +2124,6 @@ class UI {
     this.youtube;
     this.ytActive;
     this.toggleMusic_elem = document.getElementById("toggle-music");
-    this.toggleMusic_elem.classList.add("fade");
-    this.toggleMusic_elem.addEventListener(
-      "click",
-      (event) => {
-        event.stopPropagation();
-        openAudioPanel();
-      },
-      false,
-    );
   }
 
   enablePlayer(enable) {
@@ -2180,10 +2171,8 @@ class UI {
     }
   }
 
-  // Called when client toggles the music
-  toggleMusic() {
-    openAudioPanel();
-  }
+  // Panel de audio: musica / efectos / volumen (checkbox y slider).
+  toggleMusic() {}
 
   // Enables or disables backgorund music
   setYouTubeEnabled(enable) {
@@ -4736,8 +4725,7 @@ function somCarta() {
     var cartas = document.getElementsByClassName(classes[i]);
     for (var j = 0; j < cartas.length; j++) bindCardSound(cartas[j]);
   }
-  var ids = ["pass-button", "toggle-music"];
-  for (var i = 0; i < ids.length; i++) bindCardSound(document.getElementById(ids[i]));
+  bindCardSound(document.getElementById("pass-button"));
 }
 
 var lastSound = "";
@@ -4772,9 +4760,6 @@ function applyAudioPrefs() {
   if (sfxEl) sfxEl.checked = !!audioPrefs.sfx;
   if (volEl) volEl.value = String(pct);
   if (volLabel) volLabel.textContent = pct + "%";
-  if (ui && ui.toggleMusic_elem) {
-    ui.toggleMusic_elem.classList.toggle("fade", !audioPrefs.music);
-  }
   if (!ui || !ui.youtube) return;
   try {
     if (typeof ui.youtube.setVolume === "function") ui.youtube.setVolume(pct);
@@ -4795,35 +4780,22 @@ function bumpAudioVol(delta) {
 }
 
 function showAudioBox() {
-  var box = document.getElementById("audio-box");
-  if (box) box.classList.remove("hide");
-}
-
-function openAudioPanel() {
-  showAudioBox();
-  var panel = document.getElementById("audio-panel");
-  if (panel) panel.classList.remove("hide");
+  var box = document.getElementById("toggle-music");
+  if (box) box.style.display = "";
 }
 
 function bindAudioControls() {
-  var open = document.getElementById("audio-open");
-  var panel = document.getElementById("audio-panel");
+  var box = document.getElementById("audio-box");
   var musicEl = document.getElementById("audio-music");
   var sfxEl = document.getElementById("audio-sfx");
   var volEl = document.getElementById("audio-vol");
   var down = document.getElementById("audio-vol-down");
   var up = document.getElementById("audio-vol-up");
-  if (!open || !panel) return;
-  open.addEventListener("click", function (event) {
-    event.stopPropagation();
-    panel.classList.toggle("hide");
-  });
-  panel.addEventListener("click", function (event) {
-    event.stopPropagation();
-  });
-  document.addEventListener("click", function () {
-    panel.classList.add("hide");
-  });
+  if (box) {
+    box.addEventListener("click", function (event) {
+      event.stopPropagation();
+    });
+  }
   if (musicEl) {
     musicEl.addEventListener("change", function () {
       audioPrefs.music = !!musicEl.checked;
@@ -4871,6 +4843,7 @@ function tocar(arquivo, pararMusica) {
     audioPrefs.music = false;
     saveAudioPrefs();
     applyAudioPrefs();
+    if (ui.toggleMusic_elem) ui.toggleMusic_elem.classList.remove("fade");
   }
   lastSound = arquivo;
   lastSoundAt = now;
@@ -4906,10 +4879,7 @@ function iniciarMusica() {
   try {
     if (typeof ui.youtube.setVolume === "function")
       ui.youtube.setVolume(Math.round(audioPrefs.vol * 100));
-    if (ui.youtube.getPlayerState() !== YT.PlayerState.PLAYING) {
-      ui.youtube.playVideo();
-      ui.toggleMusic_elem.classList.remove("fade");
-    }
+    if (ui.youtube.getPlayerState() !== YT.PlayerState.PLAYING) ui.youtube.playVideo();
   } catch (err) {}
 }
 
