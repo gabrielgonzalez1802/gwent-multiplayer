@@ -31,7 +31,17 @@ const httpServer = http.createServer((req, res) => {
     account.handleHttp(req, res, urlPath);
     return;
   }
-  if (urlPath === "/") urlPath = "/index.html";
+  // El juego vive en app.html. / e index.html redirigen para saltar la cache vieja del index.
+  if (urlPath === "/" || urlPath === "/index.html") {
+    res.writeHead(302, {
+      Location: "/app.html",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+    res.end();
+    return;
+  }
   const file = path.normalize(path.join(root, urlPath));
   if (file !== root && !file.startsWith(root + path.sep)) {
     res.writeHead(403);
@@ -52,6 +62,7 @@ const httpServer = http.createServer((req, res) => {
     if (ext === ".html" || ext === ".js" || ext === ".css") {
       headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
       headers["Pragma"] = "no-cache";
+      headers["Expires"] = "0";
     }
     res.writeHead(200, headers);
     res.end(data);

@@ -4731,7 +4731,7 @@ function somCarta() {
 var lastSound = "";
 var lastSoundAt = 0;
 
-var audioPrefs = { music: true, sfx: true, vol: 0.7 };
+var audioPrefs = { music: true, sfx: true, vol: 0.2 };
 
 function loadAudioPrefs() {
   try {
@@ -4823,9 +4823,9 @@ function ensureAudioDom() {
     "</span></label>" +
     '<div class="audio-row audio-vol-row">' +
     '<button id="audio-vol-down" type="button" aria-label="-">−</button>' +
-    '<input id="audio-vol" type="range" min="0" max="100" value="70" />' +
+    '<input id="audio-vol" type="range" min="0" max="100" value="20" />' +
     '<button id="audio-vol-up" type="button" aria-label="+">+</button>' +
-    '<span id="audio-vol-label">70%</span>' +
+    '<span id="audio-vol-label">20%</span>' +
     "</div></div></div>";
 }
 
