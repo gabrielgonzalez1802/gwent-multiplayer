@@ -245,7 +245,8 @@ async function leaveCurrentRoom(ws, reason) {
   }
   const session = sessions[code];
   const host = session.players[0] === ws;
-  if (host || session.players.length <= 1) {
+  // Lobby rapido: si se va cualquiera, se cierra del todo (no dejar sala colgada).
+  if (!session.matchLive && (session.quick || host || session.players.length <= 1)) {
     try {
       await account.forfeit(session, ws.playerId);
     } catch (err) {}
@@ -310,13 +311,19 @@ async function kickDuplicateUser(ws) {
   ws.sessionCode = null;
 }
 
+function lobbyIdleLimit(session) {
+  // Modo rapido: 3 min. Con cuenta: el idle largo de login.
+  if (session && session.quick) return Math.min(LOBBY_IDLE_MS, 3 * 60 * 1000);
+  return LOBBY_IDLE_MS;
+}
+
 function pruneIdleLobbies() {
   const now = Date.now();
   Object.keys(sessions).forEach((code) => {
     const session = sessions[code];
     if (!session || session.matchLive) return;
     const idleAt = session.idleAt || now;
-    if (now - idleAt < LOBBY_IDLE_MS) return;
+    if (now - idleAt < lobbyIdleLimit(session)) return;
     closeSession(code, null, "expired");
   });
 }
@@ -704,58 +711,66 @@ function onPlayerClose(ws) {
   ws._gone = true;
   if (ws.http) ws.readyState = 3;
   leaveQuickQueue(ws);
-  if (!ws.playerId) return;
-    console.log(`# Player ${ws.playerId} disconnected`);
+  if (!ws.playerId) {
+    players = players.filter((player) => player !== ws);
+    return;
+  }
+  console.log(`# Player ${ws.playerId} disconnected`);
 
-    if (ws.sessionCode && sessions[ws.sessionCode]) {
-      const session = sessions[ws.sessionCode];
-      // mark disconnected and wait for reconnection
-      const timeoutId = setTimeout(() => {
-        const loserId = ws.playerId;
-        const code = ws.sessionCode;
-        if (!disconnectedPlayers[loserId] || !sessions[code]) return;
-        const sess = sessions[code];
-        Promise.resolve(account.forfeit(sess, loserId)).finally(() => {
-          if (!sessions[code]) return;
-          markExpired(sess);
-          const other = sess.players.find((p) => p.playerId !== loserId);
-          if (other && other.readyState === WebSocket.OPEN) {
-            other.send(JSON.stringify({ type: "sessionDeleted" }));
-            takeExpired(other.playerId);
+  const session = ws.sessionCode && sessions[ws.sessionCode];
+  // Lobby / cola: cierra ya. No dejar salas colgadas 20s ni 30 min.
+  if (session && !session.matchLive) {
+    Promise.resolve(leaveCurrentRoom(ws, "disconnect-lobby")).catch(() => {});
+    players = players.filter((player) => player !== ws);
+    return;
+  }
+
+  if (session) {
+    const timeoutId = setTimeout(() => {
+      const loserId = ws.playerId;
+      const code = ws.sessionCode;
+      if (!disconnectedPlayers[loserId] || !sessions[code]) return;
+      const sess = sessions[code];
+      Promise.resolve(account.forfeit(sess, loserId)).finally(() => {
+        if (!sessions[code]) return;
+        markExpired(sess);
+        const other = sess.players.find((p) => p.playerId !== loserId);
+        if (other && other.readyState === 1) {
+          other.send(JSON.stringify({ type: "sessionDeleted" }));
+          takeExpired(other.playerId);
+        }
+        clearMatchTimers(sess);
+        console.log(`# Session ${code} deleted due to no reconnection`);
+        Object.keys(disconnectedPlayers).forEach((pid) => {
+          if (disconnectedPlayers[pid].code === code) {
+            clearTimeout(disconnectedPlayers[pid].timeoutId);
+            delete disconnectedPlayers[pid];
           }
-          clearMatchTimers(sess);
-          console.log(`# Session ${code} deleted due to no reconnection`);
-          Object.keys(disconnectedPlayers).forEach((pid) => {
-            if (disconnectedPlayers[pid].code === code) {
-              clearTimeout(disconnectedPlayers[pid].timeoutId);
-              delete disconnectedPlayers[pid];
-            }
-          });
-          delete sessions[code];
         });
-      }, RECONNECT_WAIT_MS);
+        delete sessions[code];
+      });
+    }, RECONNECT_WAIT_MS);
 
-      disconnectedPlayers[ws.playerId] = { code: ws.sessionCode, timeoutId };
+    disconnectedPlayers[ws.playerId] = { code: ws.sessionCode, timeoutId };
 
-      // Notify the other player
-      const otherPlayer = session.players.find((p) => p !== ws);
-      if (otherPlayer && otherPlayer.readyState === WebSocket.OPEN) {
-        otherPlayer.send(
-          JSON.stringify({
-            type: "opponentDisconnected",
-            playerId: ws.playerId,
-            wait: RECONNECT_WAIT_MS,
-          }),
-        );
-        otherPlayer.send(JSON.stringify({ type: "sessionUnready" }));
-      }
-
-      console.log(
-        `# Player ${ws.playerId} disconnected from Session ${ws.sessionCode}. Waiting for reconnection...`,
+    const otherPlayer = session.players.find((p) => p !== ws);
+    if (otherPlayer && otherPlayer.readyState === 1) {
+      otherPlayer.send(
+        JSON.stringify({
+          type: "opponentDisconnected",
+          playerId: ws.playerId,
+          wait: RECONNECT_WAIT_MS,
+        }),
       );
+      otherPlayer.send(JSON.stringify({ type: "sessionUnready" }));
     }
 
-    players = players.filter((player) => player !== ws);
+    console.log(
+      `# Player ${ws.playerId} disconnected from Session ${ws.sessionCode}. Waiting for reconnection...`,
+    );
+  }
+
+  players = players.filter((player) => player !== ws);
 }
 
 wss.on("connection", (ws) => {

@@ -124,12 +124,20 @@ function setSeekingQuick(on) {
   if (typeof placeAccount === "function") placeAccount();
 }
 
+function ensureQuickDeck() {
+  if (!isQuickClient()) return;
+  if (typeof dm === "undefined" || typeof dm.deckWarning !== "function") return;
+  if (!dm.deckWarning()) return;
+  if (typeof dm.randomDeck === "function") dm.randomDeck();
+}
+
 function showOnlineControls() {
   btnOnlineElem.classList.add("on");
   if (!createdSessionId && !joinedSessionId && !seekingQuick) {
     btnCreateElem.classList.remove("hidden");
     btnJoinElem.classList.remove("hidden");
   }
+  ensureQuickDeck();
   syncQuickUi();
   if (typeof placeAccount === "function") placeAccount();
 }
@@ -528,6 +536,7 @@ function createGame() {
     showServerDown();
     return;
   }
+  ensureQuickDeck();
   setSeekingQuick(false);
   btnReadyElem.classList.add("disabled");
   btnCreateElem.classList.add("hidden");
@@ -554,6 +563,7 @@ function findQuick() {
     return;
   }
   if (seekingQuick) return;
+  ensureQuickDeck();
   setSeekingQuick(true);
   socket.send(JSON.stringify({ type: "findQuick" }));
 }
