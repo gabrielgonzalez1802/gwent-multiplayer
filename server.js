@@ -130,6 +130,8 @@ function touchLobby(session) {
 const quickQueue = [];
 
 function leaveQuickQueue(ws) {
+  if (!ws) return;
+  ws.quickSeeking = false;
   const i = quickQueue.indexOf(ws);
   if (i >= 0) quickQueue.splice(i, 1);
 }
@@ -142,20 +144,39 @@ function roomIsQuick(session) {
   return !!(session && session.quick);
 }
 
+// Solo entra al emparejado quien busca y no tiene sala (ocupado = sessionCode).
+function isFreeSeeker(ws) {
+  return !!(
+    ws &&
+    ws.readyState === 1 &&
+    !ws.userId &&
+    !ws.sessionCode &&
+    ws.quickSeeking
+  );
+}
+
 function purgeQuickQueue() {
   for (let i = quickQueue.length - 1; i >= 0; i--) {
-    const p = quickQueue[i];
-    if (!p || p.readyState !== 1 || p.userId || p.sessionCode) quickQueue.splice(i, 1);
+    if (!isFreeSeeker(quickQueue[i])) quickQueue.splice(i, 1);
   }
 }
 
-function makeQuickMatch(a, b) {
-  pruneIdleLobbies();
-  if (Object.keys(sessions).length >= MAX_SESSIONS) {
-    if (a.readyState === 1) a.send(JSON.stringify({ type: "sessionFull", max: MAX_SESSIONS }));
-    if (b.readyState === 1) b.send(JSON.stringify({ type: "sessionFull", max: MAX_SESSIONS }));
-    return false;
+function takeNextSeeker(except) {
+  while (quickQueue.length) {
+    const p = quickQueue.shift();
+    if (p && p !== except && isFreeSeeker(p)) return p;
   }
+  return null;
+}
+
+function makeQuickMatch(a, b) {
+  if (!isFreeSeeker(a) || !isFreeSeeker(b) || a === b) return false;
+  pruneIdleLobbies();
+  if (Object.keys(sessions).length >= MAX_SESSIONS) return false;
+  leaveQuickQueue(a);
+  leaveQuickQueue(b);
+  a.quickSeeking = false;
+  b.quickSeeking = false;
   const sessionCode = generateCode();
   const session = {
     players: [a, b],
@@ -168,10 +189,9 @@ function makeQuickMatch(a, b) {
   };
   sessions[sessionCode] = session;
   account.touch(session);
+  // Ocupados: con sessionCode ya no son buscadores hasta salir.
   a.sessionCode = sessionCode;
   b.sessionCode = sessionCode;
-  leaveQuickQueue(a);
-  leaveQuickQueue(b);
   const msgA = JSON.stringify({ type: "sessionJoined", code: sessionCode, matched: true, host: true, quick: true });
   const msgB = JSON.stringify({ type: "sessionJoined", code: sessionCode, matched: true, host: false, quick: true });
   if (a.readyState === 1) a.send(msgA);
@@ -189,11 +209,21 @@ async function enqueueQuick(ws) {
     return;
   }
   leaveQuickQueue(ws);
+  // Si ya estaba en sala, la suelta y reentra a la cola (ocupado -> libre).
   if (ws.sessionCode) await leaveCurrentRoom(ws, "queue");
+  if (ws.sessionCode) return;
+  ws.quickSeeking = true;
   purgeQuickQueue();
-  const other = quickQueue.shift();
-  if (other && other !== ws && other.readyState === 1 && !other.userId && !other.sessionCode) {
-    makeQuickMatch(other, ws);
+  const other = takeNextSeeker(ws);
+  if (other) {
+    if (makeQuickMatch(other, ws)) return;
+    // Cupo lleno: ambos siguen buscando.
+    other.quickSeeking = true;
+    ws.quickSeeking = true;
+    quickQueue.push(other);
+    quickQueue.push(ws);
+    if (ws.readyState === 1) ws.send(JSON.stringify({ type: "sessionFull", max: MAX_SESSIONS }));
+    if (other.readyState === 1) other.send(JSON.stringify({ type: "sessionFull", max: MAX_SESSIONS }));
     return;
   }
   quickQueue.push(ws);
@@ -201,13 +231,17 @@ async function enqueueQuick(ws) {
 }
 
 (function () {
-  const fakeA = { userId: null, sessionCode: null, readyState: 1, playerId: "QA", send() {} };
-  const fakeB = { userId: null, sessionCode: null, readyState: 1, playerId: "QB", send() {} };
+  const fakeA = { userId: null, sessionCode: null, readyState: 1, quickSeeking: true, playerId: "QA", send() {} };
+  const fakeB = { userId: null, sessionCode: null, readyState: 1, quickSeeking: true, playerId: "QB", send() {} };
+  const busy = { userId: null, sessionCode: "XX", readyState: 1, quickSeeking: true, playerId: "QC", send() {} };
   if (isQuickSocket(fakeA) !== true || isQuickSocket({ userId: 1 }) !== false) throw new Error("quick socket");
+  if (isFreeSeeker(busy)) throw new Error("quick ocupado");
+  if (!isFreeSeeker(fakeA)) throw new Error("quick libre");
   leaveQuickQueue(fakeA);
+  fakeA.quickSeeking = true;
   quickQueue.push(fakeA);
   leaveQuickQueue(fakeA);
-  if (quickQueue.indexOf(fakeA) !== -1) throw new Error("quick leave");
+  if (quickQueue.indexOf(fakeA) !== -1 || fakeA.quickSeeking) throw new Error("quick leave");
   leaveQuickQueue(fakeB);
 })();
 
