@@ -31,17 +31,9 @@ const httpServer = http.createServer((req, res) => {
     account.handleHttp(req, res, urlPath);
     return;
   }
-  // El juego vive en app.html. / e index.html redirigen para saltar la cache vieja del index.
-  if (urlPath === "/" || urlPath === "/index.html") {
-    res.writeHead(302, {
-      Location: "/app.html",
-      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-      Pragma: "no-cache",
-      Expires: "0",
-    });
-    res.end();
-    return;
-  }
+  // Sin index.html en disco: nginx no puede servir el HTML viejo cacheado.
+  // La raiz y /index.html salen por Node con app.html fresco.
+  if (urlPath === "/" || urlPath === "/index.html") urlPath = "/app.html";
   const file = path.normalize(path.join(root, urlPath));
   if (file !== root && !file.startsWith(root + path.sep)) {
     res.writeHead(403);
