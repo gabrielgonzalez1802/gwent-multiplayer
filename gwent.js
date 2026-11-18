@@ -3387,16 +3387,44 @@ function buildRandomCounts(copies, rules, rng) {
     }
     return arr;
   }
-  function attempt(units, specials) {
+  function unitHiCap(units) {
     let unitHi =
-      rules.maxUnits == null ? rules.minUnits : Math.min(rules.maxUnits, units.length);
+      rules.maxUnits == null ? Math.max(rules.minUnits, units.length) : Math.min(rules.maxUnits, units.length);
+    // Sin tope de unidades: en clasico apunta cerca del minimo (22..26) para no romper fuerza 130.
+    if (rules.maxUnits == null) {
+      const soft = rules.maxStrength != null ? rules.minUnits + 4 : rules.minUnits + 10;
+      unitHi = Math.min(unitHi, soft);
+    }
     if (rules.maxDeck != null) unitHi = Math.min(unitHi, rules.maxDeck);
-    if (unitHi < rules.minUnits || units.length < rules.minUnits) return null;
-    const unitTarget = rules.minUnits + rnd(unitHi - rules.minUnits + 1);
-    let specialHi = Math.min(rules.maxSpecial, specials.length);
-    if (rules.maxDeck != null)
-      specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - unitTarget));
-    const specialTarget = specialHi === 0 ? 0 : rnd(specialHi + 1);
+    return unitHi;
+  }
+  function canTake(card, hero, spy, medic, strength) {
+    if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes) return false;
+    if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies) return false;
+    if (rules.maxMedics != null && card.medic && medic + 1 > rules.maxMedics) return false;
+    if (rules.maxStrength != null && strength + card.strength > rules.maxStrength) return false;
+    return true;
+  }
+  function pack(chosen, unitCount, hero, spy, medic, strength, spec, weather) {
+    const counts = {};
+    chosen.forEach(function (c) {
+      counts[c.index] = (counts[c.index] || 0) + 1;
+    });
+    const stats = {
+      total: chosen.length,
+      units: unitCount,
+      special: spec,
+      hero: hero,
+      spy: spy,
+      medic: medic,
+      strength: strength,
+      weather: weather,
+    };
+    if (deckProblems(stats, rules).length) return null;
+    return { counts: counts, stats: stats };
+  }
+  function attempt(units, specials, unitTarget, specialTarget) {
+    if (unitTarget < rules.minUnits || units.length < rules.minUnits) return null;
     const chosen = [];
     let hero = 0;
     let spy = 0;
@@ -3405,14 +3433,7 @@ function buildRandomCounts(copies, rules, rng) {
     let unitCount = 0;
     for (let i = 0; i < units.length && unitCount < unitTarget; i++) {
       const card = units[i];
-      if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes)
-        continue;
-      if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies)
-        continue;
-      if (rules.maxMedics != null && card.medic && medic + 1 > rules.maxMedics)
-        continue;
-      if (rules.maxStrength != null && strength + card.strength > rules.maxStrength)
-        continue;
+      if (!canTake(card, hero, spy, medic, strength)) continue;
       chosen.push(card);
       unitCount++;
       if (card.hero) hero++;
@@ -3435,22 +3456,15 @@ function buildRandomCounts(copies, rules, rng) {
       spec++;
       if (specials[i].weather) weather++;
     }
-    const counts = {};
-    chosen.forEach(function (c) {
-      counts[c.index] = (counts[c.index] || 0) + 1;
+    return pack(chosen, unitCount, hero, spy, medic, strength, spec, weather);
+  }
+  // Relleno seguro: unidades mas debiles legales + especiales hasta el tope.
+  function greedy(units, specials, specialTarget) {
+    const ordered = units.slice().sort(function (a, b) {
+      return a.strength - b.strength || Number(a.hero) - Number(b.hero);
     });
-    const stats = {
-      total: chosen.length,
-      units: unitCount,
-      special: spec,
-      hero: hero,
-      spy: spy,
-      medic: medic,
-      strength: strength,
-      weather: weather,
-    };
-    if (deckProblems(stats, rules).length) return null;
-    return { counts: counts, stats: stats };
+    const unitHi = unitHiCap(ordered);
+    return attempt(ordered, shuffle(specials), Math.min(unitHi, Math.max(rules.minUnits, unitHi)), specialTarget);
   }
   const unitCopies = copies.filter(function (c) {
     return !c.special;
@@ -3458,14 +3472,29 @@ function buildRandomCounts(copies, rules, rng) {
   const specialCopies = copies.filter(function (c) {
     return c.special;
   });
+  const unitHi = unitHiCap(unitCopies);
+  if (unitHi < rules.minUnits || unitCopies.length < rules.minUnits) return null;
   let chosen = null;
-  for (let n = 0; n < 24 && !chosen; n++)
-    chosen = attempt(shuffle(unitCopies), shuffle(specialCopies));
-  if (!chosen && rules.maxStrength != null) {
-    const weak = unitCopies.slice().sort(function (a, b) {
-      return a.strength - b.strength;
-    });
-    chosen = attempt(weak, shuffle(specialCopies));
+  for (let n = 0; n < 48 && !chosen; n++) {
+    const units = n % 3 === 0
+      ? unitCopies.slice().sort(function (a, b) { return a.strength - b.strength; })
+      : shuffle(unitCopies);
+    const specials = shuffle(specialCopies);
+    let specialHi = Math.min(rules.maxSpecial, specials.length);
+    if (rules.maxDeck != null)
+      specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - rules.minUnits));
+    const unitTarget = rules.minUnits + rnd(Math.max(0, unitHi - rules.minUnits) + 1);
+    const specialTarget = specialHi === 0 ? 0 : rnd(specialHi + 1);
+    chosen = attempt(units, specials, unitTarget, specialTarget);
+  }
+  if (!chosen) {
+    let specialHi = Math.min(rules.maxSpecial, specialCopies.length);
+    if (rules.maxDeck != null)
+      specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - rules.minUnits));
+    // Intenta con varias cantidades de especiales, incluyendo el maximo.
+    const targets = [specialHi, Math.min(specialHi, 3), Math.min(specialHi, 1), 0];
+    for (let i = 0; i < targets.length && !chosen; i++)
+      chosen = greedy(unitCopies, specialCopies, targets[i]);
   }
   return chosen;
 }
@@ -3684,6 +3713,7 @@ class DeckMaker {
 
   // Builds a random deck of the current faction inside the active limits.
   randomDeck() {
+    // Clasico o personalizado: siempre las reglas activas (activeRules).
     const rules = activeRules();
     const copies = [];
     for (let i = 0; i < this.bank.length; i++) {
@@ -3703,7 +3733,45 @@ class DeckMaker {
         });
       }
     }
-    const rolled = buildRandomCounts(copies, rules);
+    let rolled = buildRandomCounts(copies, rules);
+    if (rolled) {
+      // Red de seguridad: aplica los mismos topes que Ready (trimToRules).
+      const listed = Object.keys(rolled.counts).map(function (index) {
+        return { index: Number(index), count: rolled.counts[index] };
+      });
+      const trimmed = trimToRules(listed, rules);
+      const counts = {};
+      const stats = {
+        total: 0,
+        units: 0,
+        special: 0,
+        hero: 0,
+        spy: 0,
+        medic: 0,
+        strength: 0,
+        weather: 0,
+      };
+      trimmed.forEach(function (row) {
+        const data = card_dict[row.index];
+        const n = row.count;
+        counts[row.index] = n;
+        stats.total += n;
+        if (data.deck === "special" || data.deck === "weather") {
+          stats.special += n;
+          if (data.deck === "weather") stats.weather += n;
+          return;
+        }
+        stats.units += n;
+        stats.strength += (Number(data.strength) || 0) * n;
+        const ab = String(data.ability || "").split(" ");
+        if (ab.includes("hero")) stats.hero += n;
+        if (ab.includes("spy")) stats.spy += n;
+        if (ab.includes("medic")) stats.medic += n;
+      });
+      rolled = stats.units >= rules.minUnits && !deckProblems(stats, rules).length
+        ? { counts: counts, stats: stats }
+        : null;
+    }
     if (!rolled) {
       const factionName =
         typeof factionField === "function"
@@ -4204,17 +4272,18 @@ class DeckMaker {
       Array.isArray(c) ? { index: c[0], count: c[1] } : { index: c.index, count: c.count },
     );
     const profile = cpuProfile(cpuLevel);
+    const liveRules = activeRules();
     if (!profile) {
-      if (customMode) opCards = trimToRules(opCards, activeRules());
+      opCards = trimToRules(opCards, liveRules);
     } else {
-      const rules = tightenRules(customMode ? activeRules() : classicLimits(), profile);
+      const rules = tightenRules(liveRules, profile);
       const built = buildLevelDeck(
         factionCopies(pick.faction),
         rules,
         cpuLevel !== "principiante" && cpuLevel !== "facil",
       );
       if (built) opCards = built;
-      else if (customMode) opCards = trimToRules(opCards, activeRules());
+      else opCards = trimToRules(opCards, liveRules);
     }
     let op_deck = {
       faction: pick.faction,
