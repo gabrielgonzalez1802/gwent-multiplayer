@@ -44,9 +44,16 @@ const httpServer = http.createServer((req, res) => {
       res.end("no");
       return;
     }
-    res.writeHead(200, {
-      "Content-Type": fileTypes[path.extname(file)] || "application/octet-stream",
-    });
+    const ext = path.extname(file);
+    const headers = {
+      "Content-Type": fileTypes[ext] || "application/octet-stream",
+    };
+    // HTML/JS/CSS: sin cache agresiva (nginx/CDN dejaba el index viejo sin el panel de audio).
+    if (ext === ".html" || ext === ".js" || ext === ".css") {
+      headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+      headers["Pragma"] = "no-cache";
+    }
+    res.writeHead(200, headers);
     res.end(data);
   });
 });

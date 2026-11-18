@@ -159,18 +159,22 @@ html {
 	z-index: -100;
 }
 
-#toggle-music {
-	position: absolute;
-	top: 42.5vw;
-	left: 19.2vw;
+#toggle-music,
+#toggle-music.music-customization {
+	position: fixed !important;
+	top: 56px;
+	left: 12px;
+	right: auto;
+	bottom: auto;
 	width: auto;
-	min-width: 14vw;
+	min-width: 200px;
 	height: auto;
 	font-size: 13px;
 	color: #ddd;
 	text-shadow: none;
-	z-index: 200;
+	z-index: 5000;
 	cursor: default;
+	transform: none !important;
 }
 
 #toggle-music.fade {
@@ -772,7 +776,7 @@ body.lang-es #pass-button {
 }
 
 .music-customization {
-	transform: translate(22.5vw, -.5vw);
+	/* El panel de audio usa position:fixed; no desplazar con vw. */
 }
 
 #notification-bar {
