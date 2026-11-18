@@ -36,6 +36,16 @@ btnJoinElem.addEventListener("click", () => joinGame());
 btnJoinElem.classList.add("disabled");
 btnJoinElem.classList.add("hidden");
 
+const btnFindQuick = document.getElementById("find-quick");
+if (btnFindQuick) {
+  btnFindQuick.addEventListener("click", () => findQuick());
+  btnFindQuick.classList.add("hidden");
+}
+
+const quickStatusElem = document.getElementById("quick-status");
+const quickNoteElem = document.getElementById("quick-note");
+var seekingQuick = false;
+
 const btnOnlineElem = document.getElementById("online-game");
 btnOnlineElem.addEventListener("click", () => ensureOnline());
 
@@ -66,12 +76,61 @@ sessionIdDiv.classList.add("hidden");
 
 inputGroup.classList.add("hidden");
 
+function isQuickClient() {
+  return typeof accountProfile === "undefined" || !accountProfile;
+}
+
+function syncQuickUi() {
+  var guest = isQuickClient();
+  if (quickNoteElem) quickNoteElem.classList.toggle("hide", !guest);
+  var betBtn = document.getElementById("bet-open");
+  if (betBtn) betBtn.classList.toggle("hide", guest);
+  var onlineBtn = document.querySelector("#online-menu > .menu-drop-btn");
+  if (onlineBtn) {
+    var key = guest ? "menu_quick" : "menu_online";
+    onlineBtn.setAttribute("data-i18n", key);
+    onlineBtn.textContent = t(key);
+  }
+  if (!btnFindQuick) return;
+  if (guest && !seekingQuick && !createdSessionId && !joinedSessionId && socket && socket.readyState === 1) {
+    btnFindQuick.classList.remove("hidden");
+    btnFindQuick.classList.remove("disabled");
+  } else {
+    btnFindQuick.classList.add("hidden");
+  }
+  if (quickStatusElem) {
+    quickStatusElem.classList.toggle("hidden", !seekingQuick);
+    if (seekingQuick) quickStatusElem.textContent = t("quick_waiting");
+  }
+}
+
+function setSeekingQuick(on) {
+  seekingQuick = !!on;
+  if (seekingQuick) {
+    btnCreateElem.classList.add("hidden");
+    btnJoinElem.classList.add("hidden");
+    if (btnFindQuick) btnFindQuick.classList.add("hidden");
+    inputGroup.classList.add("hidden");
+    btnConfirmJoin.classList.add("hidden");
+    btnCancelElem.classList.remove("hidden");
+    btnReadyElem.classList.add("hidden");
+    sessionIdDiv.classList.add("hidden");
+  } else if (!createdSessionId && !joinedSessionId) {
+    btnCreateElem.classList.remove("hidden");
+    btnJoinElem.classList.remove("hidden");
+    btnCancelElem.classList.add("hidden");
+  }
+  syncQuickUi();
+  if (typeof placeAccount === "function") placeAccount();
+}
+
 function showOnlineControls() {
   btnOnlineElem.classList.add("on");
-  if (!createdSessionId && !joinedSessionId) {
+  if (!createdSessionId && !joinedSessionId && !seekingQuick) {
     btnCreateElem.classList.remove("hidden");
     btnJoinElem.classList.remove("hidden");
   }
+  syncQuickUi();
   if (typeof placeAccount === "function") placeAccount();
 }
 
@@ -136,6 +195,26 @@ function showRestoredLobby(code, host) {
   if (typeof syncLeaveLobby === "function") syncLeaveLobby();
 }
 
+function enterMatchedLobby(data) {
+  setSeekingQuick(false);
+  if (data.host) showSessionCode(data.code);
+  else {
+    createdSessionId = null;
+    joinedSessionId = data.code;
+    saveSeat(data.code, false);
+  }
+  btnReadyElem.classList.remove("hidden");
+  btnReadyElem.classList.remove("disabled");
+  btnCancelElem.classList.remove("hidden");
+  btnCreateElem.classList.add("hidden");
+  btnJoinElem.classList.add("hidden");
+  if (btnFindQuick) btnFindQuick.classList.add("hidden");
+  inputGroup.classList.add("hidden");
+  btnConfirmJoin.classList.add("hidden");
+  if (typeof syncChat === "function") syncChat();
+  if (typeof syncLeaveLobby === "function") syncLeaveLobby();
+}
+
 function handleLobbyMessage(event) {
   let data;
   try {
@@ -144,8 +223,16 @@ function handleLobbyMessage(event) {
     return;
   }
   if (data.type === "sessionCreated") showSessionCode(data.code);
+  if (data.type === "quickWaiting") setSeekingQuick(true);
+  if (data.type === "quickIdle") setSeekingQuick(false);
+  if (data.type === "quickDenied") {
+    setSeekingQuick(false);
+    if (typeof gameAlert === "function") gameAlert(t("quick_denied"));
+  }
+  if (data.type === "sessionJoined" && data.matched) enterMatchedLobby(data);
   if (data.type === "sessionFull") {
     clearTimeout(createWatch);
+    setSeekingQuick(false);
     if (typeof cancelSession === "function") cancelSession();
   }
 }
@@ -163,8 +250,11 @@ function attachSocketListeners() {
   };
   socket.onopen = announce;
   socket.onclose = () => {
+    seekingQuick = false;
+    if (quickStatusElem) quickStatusElem.classList.add("hidden");
     btnCreateElem.classList.add("disabled");
     btnJoinElem.classList.add("disabled");
+    if (btnFindQuick) btnFindQuick.classList.add("disabled");
     showServerDown();
     if (!activeAddress || reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
@@ -438,9 +528,11 @@ function createGame() {
     showServerDown();
     return;
   }
+  setSeekingQuick(false);
   btnReadyElem.classList.add("disabled");
   btnCreateElem.classList.add("hidden");
   btnJoinElem.classList.add("hidden");
+  if (btnFindQuick) btnFindQuick.classList.add("hidden");
 
   btnReadyElem.classList.remove("hidden");
   btnCancelElem.classList.remove("hidden");
@@ -452,10 +544,26 @@ function createGame() {
   }, 3000);
 }
 
+function findQuick() {
+  if (!isQuickClient()) {
+    if (typeof gameAlert === "function") gameAlert(t("quick_denied"));
+    return;
+  }
+  if (!socket || socket.readyState !== 1) {
+    showServerDown();
+    return;
+  }
+  if (seekingQuick) return;
+  setSeekingQuick(true);
+  socket.send(JSON.stringify({ type: "findQuick" }));
+}
+
 function joinGame() {
+  setSeekingQuick(false);
   btnReadyElem.classList.add("hidden");
   btnCreateElem.classList.add("hidden");
   btnJoinElem.classList.add("hidden");
+  if (btnFindQuick) btnFindQuick.classList.add("hidden");
 
   btnCancelElem.classList.remove("hidden");
   btnConfirmJoin.classList.remove("hidden");
@@ -514,6 +622,8 @@ async function findSession() {
 function cancelSession(silent) {
   clearSeat();
   console.log("cancelSession");
+  var wasSeeking = seekingQuick;
+  setSeekingQuick(false);
   btnReadyElem.classList.add("hidden");
   btnCreateElem.classList.remove("hidden");
   btnJoinElem.classList.remove("hidden");
@@ -528,7 +638,9 @@ function cancelSession(silent) {
   createdSessionId = null;
   joinedSessionId = null;
   if (!silent && socket && socket.readyState === 1) {
-    if (created) {
+    if (wasSeeking && !created && !joined) {
+      socket.send(JSON.stringify({ type: "cancelQuick" }));
+    } else if (created) {
       console.log("Cancelled Session of code: " + created);
       socket.send(JSON.stringify({ type: "cancelSession", code: created }));
     } else if (joined) {
@@ -536,6 +648,7 @@ function cancelSession(silent) {
       socket.send(JSON.stringify({ type: "leaveSession", code: joined }));
     }
   }
+  syncQuickUi();
   if (typeof placeAccount === "function") placeAccount();
   if (typeof syncChat === "function") syncChat();
   if (typeof syncLeaveLobby === "function") syncLeaveLobby();

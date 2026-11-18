@@ -312,16 +312,19 @@
           </select>
         </div>
       </div>
-      <div id="online-menu" class="menu-drop hide">
+      <div id="online-menu" class="menu-drop">
         <button type="button" class="menu-drop-btn" data-i18n="menu_online">Online</button>
         <div id="lobby-bar" class="menu-panel">
           <div id="no-server" class="hidden">
             <div id="no-server-icon"></div>
             <span data-i18n="no_server">Server is not running. Run npm start</span>
           </div>
+          <p id="quick-note" class="quick-note hide" data-i18n="quick_note">Quick play: no login, no rewards.</p>
           <button id="online-game" type="button" class="hide" data-i18n="online_play">Online</button>
           <button id="create-game" class="hidden" data-i18n="create_game">Create Game</button>
           <button id="join-game" class="hidden" data-i18n="join_game">Join Game</button>
+          <button id="find-quick" type="button" class="hidden" data-i18n="quick_find">Find opponent</button>
+          <span id="quick-status" class="quick-status hidden" data-i18n="quick_waiting">Looking for opponent…</span>
           <span id="join-input">
             <label for="session-input" data-i18n="session_code">Session code</label>
             <input type="text" id="session-input" maxlength="4" name="session-input" autocapitalize="characters" spellcheck="false" />

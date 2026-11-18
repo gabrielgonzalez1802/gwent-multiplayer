@@ -127,6 +127,90 @@ function touchLobby(session) {
   if (session) session.idleAt = Date.now();
 }
 
+const quickQueue = [];
+
+function leaveQuickQueue(ws) {
+  const i = quickQueue.indexOf(ws);
+  if (i >= 0) quickQueue.splice(i, 1);
+}
+
+function isQuickSocket(ws) {
+  return !!(ws && !ws.userId);
+}
+
+function roomIsQuick(session) {
+  return !!(session && session.quick);
+}
+
+function purgeQuickQueue() {
+  for (let i = quickQueue.length - 1; i >= 0; i--) {
+    const p = quickQueue[i];
+    if (!p || p.readyState !== 1 || p.userId || p.sessionCode) quickQueue.splice(i, 1);
+  }
+}
+
+function makeQuickMatch(a, b) {
+  pruneIdleLobbies();
+  if (Object.keys(sessions).length >= MAX_SESSIONS) {
+    if (a.readyState === 1) a.send(JSON.stringify({ type: "sessionFull", max: MAX_SESSIONS }));
+    if (b.readyState === 1) b.send(JSON.stringify({ type: "sessionFull", max: MAX_SESSIONS }));
+    return false;
+  }
+  const sessionCode = generateCode();
+  const session = {
+    players: [a, b],
+    code: sessionCode,
+    playersReady: 0,
+    custom: false,
+    rules: cleanRules(null),
+    idleAt: Date.now(),
+    quick: true,
+  };
+  sessions[sessionCode] = session;
+  account.touch(session);
+  a.sessionCode = sessionCode;
+  b.sessionCode = sessionCode;
+  leaveQuickQueue(a);
+  leaveQuickQueue(b);
+  const msgA = JSON.stringify({ type: "sessionJoined", code: sessionCode, matched: true, host: true, quick: true });
+  const msgB = JSON.stringify({ type: "sessionJoined", code: sessionCode, matched: true, host: false, quick: true });
+  if (a.readyState === 1) a.send(msgA);
+  if (b.readyState === 1) b.send(msgB);
+  if (a.readyState === 1) a.send(JSON.stringify({ type: "sessionReady", player: 1 }));
+  if (b.readyState === 1) b.send(JSON.stringify({ type: "sessionReady", player: 2 }));
+  pushRules(session, null);
+  console.log(`# Quick match ${sessionCode}: ${a.playerId} vs ${b.playerId}`);
+  return true;
+}
+
+async function enqueueQuick(ws) {
+  if (!isQuickSocket(ws)) {
+    if (ws.readyState === 1) ws.send(JSON.stringify({ type: "quickDenied", reason: "account" }));
+    return;
+  }
+  leaveQuickQueue(ws);
+  if (ws.sessionCode) await leaveCurrentRoom(ws, "queue");
+  purgeQuickQueue();
+  const other = quickQueue.shift();
+  if (other && other !== ws && other.readyState === 1 && !other.userId && !other.sessionCode) {
+    makeQuickMatch(other, ws);
+    return;
+  }
+  quickQueue.push(ws);
+  if (ws.readyState === 1) ws.send(JSON.stringify({ type: "quickWaiting" }));
+}
+
+(function () {
+  const fakeA = { userId: null, sessionCode: null, readyState: 1, playerId: "QA", send() {} };
+  const fakeB = { userId: null, sessionCode: null, readyState: 1, playerId: "QB", send() {} };
+  if (isQuickSocket(fakeA) !== true || isQuickSocket({ userId: 1 }) !== false) throw new Error("quick socket");
+  leaveQuickQueue(fakeA);
+  quickQueue.push(fakeA);
+  leaveQuickQueue(fakeA);
+  if (quickQueue.indexOf(fakeA) !== -1) throw new Error("quick leave");
+  leaveQuickQueue(fakeB);
+})();
+
 function clearDisconnectTimers(code) {
   Object.keys(disconnectedPlayers).forEach((pid) => {
     if (disconnectedPlayers[pid].code !== code) return;
@@ -332,7 +416,15 @@ async function onPlayerMessage(ws, message) {
     try {
     if ((await account.onSocket(ws, data, sessions)) === "done") {
       // Misma cuenta en otro asiento: cierra esa sala y deja esta conexion limpia.
-      if (data.type === "auth" && ws.userId) await kickDuplicateUser(ws);
+      if (data.type === "auth") {
+        leaveQuickQueue(ws);
+        if (ws.userId) {
+          await kickDuplicateUser(ws);
+          if (ws.sessionCode && sessions[ws.sessionCode] && roomIsQuick(sessions[ws.sessionCode])) {
+            await leaveCurrentRoom(ws, "auth-upgrade");
+          }
+        }
+      }
       return;
     }
 
@@ -411,8 +503,20 @@ async function onPlayerMessage(ws, message) {
       return;
     }
 
+    if (data.type === "findQuick") {
+      await enqueueQuick(ws);
+      return;
+    }
+
+    if (data.type === "cancelQuick") {
+      leaveQuickQueue(ws);
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: "quickIdle" }));
+      return;
+    }
+
     if (data.type === "createSession") {
       pruneIdleLobbies();
+      leaveQuickQueue(ws);
       // Si ya estaba en una sala, la cierra antes de crear otra.
       if (ws.sessionCode) await leaveCurrentRoom(ws, "recreate");
       if (Object.keys(sessions).length >= MAX_SESSIONS) {
@@ -420,6 +524,7 @@ async function onPlayerMessage(ws, message) {
         return;
       }
       const sessionCode = generateCode();
+      const quick = isQuickSocket(ws);
       sessions[sessionCode] = {
         players: [ws],
         code: sessionCode,
@@ -427,13 +532,14 @@ async function onPlayerMessage(ws, message) {
         custom: !!data.custom,
         rules: cleanRules(data.rules),
         idleAt: Date.now(),
+        quick: quick,
       };
       account.touch(sessions[sessionCode]);
       ws.sessionCode = sessionCode;
-      ws.send(JSON.stringify({ type: "sessionCreated", code: sessionCode }));
-      console.log(`# Player ${ws.playerId} created Session ${sessionCode}`);
+      ws.send(JSON.stringify({ type: "sessionCreated", code: sessionCode, quick: quick }));
+      console.log(`# Player ${ws.playerId} created Session ${sessionCode}${quick ? " (rapida)" : ""}`);
 
-      ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode }));
+      ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode, quick: quick }));
       account.sendBet(sessions[sessionCode]);
       return;
     }
@@ -448,6 +554,7 @@ async function onPlayerMessage(ws, message) {
     }
 
     if (data.type === "cancelSession") {
+      leaveQuickQueue(ws);
       const sessionCode = data.code || ws.sessionCode;
       if (!sessionCode || !sessions[sessionCode]) {
         ws.sessionCode = null;
@@ -468,30 +575,34 @@ async function onPlayerMessage(ws, message) {
     }
 
     if (data.type === "joinSession") {
+      leaveQuickQueue(ws);
       if (ws.sessionCode) await leaveCurrentRoom(ws, "rejoin");
       const sessionCode = String(data.code || "").trim().toUpperCase();
       if (sessions[sessionCode] && sessions[sessionCode].players.length === 1) {
         const host = sessions[sessionCode].players[0];
-        if (!account.sameSide(host, ws)) {
+        const session = sessions[sessionCode];
+        const sideOk = account.sameSide(host, ws);
+        const modeOk = roomIsQuick(session) === isQuickSocket(ws);
+        if (!sideOk || !modeOk) {
           ws.send(JSON.stringify({ type: "sessionMismatch", role: "join" }));
           if (host.readyState === 1) host.send(JSON.stringify({ type: "sessionMismatch", role: "host" }));
-          console.log(`# Player ${ws.playerId} blocked from Session ${sessionCode}: cuenta distinta`);
+          console.log(`# Player ${ws.playerId} blocked from Session ${sessionCode}: modo distinto`);
           return;
         }
-        sessions[sessionCode].players.push(ws);
+        session.players.push(ws);
         ws.sessionCode = sessionCode;
-        touchLobby(sessions[sessionCode]);
-        ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode }));
+        touchLobby(session);
+        ws.send(JSON.stringify({ type: "sessionJoined", code: sessionCode, quick: !!session.quick }));
         console.log(`# Player ${ws.playerId} joined Session ${sessionCode}`);
 
-        sessions[sessionCode].players.forEach((player, index) => {
+        session.players.forEach((player, index) => {
           player.send(
             JSON.stringify({ type: "sessionReady", player: index + 1 }),
           );
         });
-        account.touch(sessions[sessionCode]);
-        account.sendBet(sessions[sessionCode]);
-        pushRules(sessions[sessionCode], host);
+        account.touch(session);
+        account.sendBet(session);
+        pushRules(session, host);
       } else {
         ws.send(JSON.stringify({ type: "sessionInvalid" }));
         console.log(
@@ -592,6 +703,7 @@ function onPlayerClose(ws) {
   if (ws._gone) return;
   ws._gone = true;
   if (ws.http) ws.readyState = 3;
+  leaveQuickQueue(ws);
   if (!ws.playerId) return;
     console.log(`# Player ${ws.playerId} disconnected`);
 

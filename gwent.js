@@ -4816,7 +4816,8 @@ function safeName(name) {
 }
 
 function accountLabel() {
-  return accountProfile && accountProfile.name ? safeName(accountProfile.name) : "";
+  if (accountProfile && accountProfile.name) return safeName(accountProfile.name);
+  return t("quick_guest");
 }
 
 function onlineSeat() {

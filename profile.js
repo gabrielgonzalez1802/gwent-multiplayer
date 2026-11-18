@@ -140,10 +140,12 @@ function renderAccount() {
   var actions = document.getElementById("deck-actions");
   var onlineMenu = document.getElementById("online-menu");
   if (actions) actions.classList.toggle("account", !!accountProfile);
-  if (onlineMenu) onlineMenu.classList.toggle("hide", !accountProfile);
+  if (onlineMenu) onlineMenu.classList.remove("hide");
+  if (typeof syncQuickUi === "function") syncQuickUi();
   if (!accountProfile) {
     inn.classList.remove("hide");
     out.classList.add("hide");
+    placeAccount();
     return;
   }
   inn.classList.add("hide");
@@ -190,7 +192,7 @@ function acceptAccount(data, opts) {
   opts = opts || {};
   // Solo en login/registro fresco: no al recuperar /api/me (eso tiraba la sala al recargar).
   if (opts.fresh) {
-    if (typeof cancelSession === "function" && (createdSessionId || joinedSessionId)) {
+    if (typeof cancelSession === "function" && (createdSessionId || joinedSessionId || (typeof seekingQuick !== "undefined" && seekingQuick))) {
       try { cancelSession(); } catch (err) {}
     }
     if (typeof clearHold === "function") clearHold();

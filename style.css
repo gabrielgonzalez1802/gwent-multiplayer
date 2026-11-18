@@ -3516,7 +3516,7 @@ main.noclick .leader-box {
 	border: 0.1vw ridge rgb(30,30,30);
 }
 
-#offline-game:hover, #online-game:hover, #custom-mode:hover, #tutorial-game:hover, #join-game:hover, #confirm-join:hover, #create-game:hover, #cancel-game:hover, #bet-open:hover {
+#offline-game:hover, #online-game:hover, #custom-mode:hover, #tutorial-game:hover, #join-game:hover, #confirm-join:hover, #create-game:hover, #find-quick:hover, #cancel-game:hover, #bet-open:hover {
   box-shadow: 0 0 rgba(0, 0, 0, 0.4);
   border-bottom-width: 2px;
   transform: translateY(2px);
@@ -3584,6 +3584,37 @@ main.noclick .leader-box {
 	background-color: rgb(20,20,20);
 	border: 0.1vw ridge rgb(30,30,30);
 	box-shadow: 0px 3px 5px 0px rgba(0, 0, 0, 0.4);
+}
+
+#find-quick {
+	position: static;
+	z-index: 87;
+	width: auto;
+	min-width: 0;
+	height: 32px;
+	padding: 0 12px;
+	font-size: 14px;
+	white-space: nowrap;
+	color: #DDD;
+	background-color: rgb(20,20,20);
+	border: 0.1vw ridge rgb(30,30,30);
+	box-shadow: 0px 3px 5px 0px rgba(0, 0, 0, 0.4);
+	cursor: pointer;
+}
+
+.quick-note,
+.quick-status {
+	display: block;
+	margin: 0 0 8px;
+	font-size: 12px;
+	line-height: 1.35;
+	color: #bbb;
+	max-width: 220px;
+}
+
+.quick-status.hidden,
+#find-quick.hidden {
+	display: none;
 }
 
 #cancel-game {
