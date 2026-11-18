@@ -3360,6 +3360,11 @@ function trimToRules(cards, rules) {
     console.error("random tight");
   if (buildRandomCounts(copies.slice(0, 3), classic, Math.random))
     console.error("random should fail");
+  // Espias: maximo 2, no cuota fija. Con rng=0 el tope sorteado es 0.
+  const noSpyRoll = buildRandomCounts(copies, classic, function () {
+    return 0;
+  });
+  if (!noSpyRoll || noSpyRoll.stats.spy !== 0) console.error("random spy max not quota");
 })();
 
 function buildRandomCounts(copies, rules, rng) {
@@ -3377,20 +3382,17 @@ function buildRandomCounts(copies, rules, rng) {
     return arr;
   }
   function unitHiCap(units) {
+    // Solo reglas activas: sin tope blando anti-cartas-fuertes.
     let unitHi =
       rules.maxUnits == null ? Math.max(rules.minUnits, units.length) : Math.min(rules.maxUnits, units.length);
-    // Sin tope de unidades: en clasico apunta cerca del minimo (22..26) para no romper fuerza 130.
-    if (rules.maxUnits == null) {
-      const soft = rules.maxStrength != null ? rules.minUnits + 4 : rules.minUnits + 10;
-      unitHi = Math.min(unitHi, soft);
-    }
     if (rules.maxDeck != null) unitHi = Math.min(unitHi, rules.maxDeck);
     return unitHi;
   }
-  function canTake(card, hero, spy, medic, strength) {
-    if (rules.maxHeroes != null && card.hero && hero + 1 > rules.maxHeroes) return false;
-    if (rules.maxSpies != null && card.spy && spy + 1 > rules.maxSpies) return false;
-    if (rules.maxMedics != null && card.medic && medic + 1 > rules.maxMedics) return false;
+  // Caps de reglas (maximo, no cuota fija).
+  function underCap(card, hero, spy, medic, strength, heroCap, spyCap, medicCap) {
+    if (heroCap != null && card.hero && hero + 1 > heroCap) return false;
+    if (spyCap != null && card.spy && spy + 1 > spyCap) return false;
+    if (medicCap != null && card.medic && medic + 1 > medicCap) return false;
     if (rules.maxStrength != null && strength + card.strength > rules.maxStrength) return false;
     return true;
   }
@@ -3412,7 +3414,8 @@ function buildRandomCounts(copies, rules, rng) {
     if (deckProblems(stats, rules).length) return null;
     return { counts: counts, stats: stats };
   }
-  function attempt(units, specials, unitTarget, specialTarget) {
+  // heroCap/spyCap/medicCap: tope de este intento (0..max). null = sin tope de tipo.
+  function attempt(units, specials, unitTarget, specialTarget, heroCap, spyCap, medicCap) {
     if (unitTarget < rules.minUnits || units.length < rules.minUnits) return null;
     const chosen = [];
     let hero = 0;
@@ -3422,7 +3425,7 @@ function buildRandomCounts(copies, rules, rng) {
     let unitCount = 0;
     for (let i = 0; i < units.length && unitCount < unitTarget; i++) {
       const card = units[i];
-      if (!canTake(card, hero, spy, medic, strength)) continue;
+      if (!underCap(card, hero, spy, medic, strength, heroCap, spyCap, medicCap)) continue;
       chosen.push(card);
       unitCount++;
       if (card.hero) hero++;
@@ -3447,13 +3450,25 @@ function buildRandomCounts(copies, rules, rng) {
     }
     return pack(chosen, unitCount, hero, spy, medic, strength, spec, weather);
   }
-  // Relleno seguro: unidades mas debiles legales + especiales hasta el tope.
+  // Relleno seguro: respeta maximos de reglas (puede usar 0..max, no fuerza el max).
   function greedy(units, specials, specialTarget) {
     const ordered = units.slice().sort(function (a, b) {
       return a.strength - b.strength || Number(a.hero) - Number(b.hero);
     });
     const unitHi = unitHiCap(ordered);
-    return attempt(ordered, shuffle(specials), Math.min(unitHi, Math.max(rules.minUnits, unitHi)), specialTarget);
+    return attempt(
+      ordered,
+      shuffle(specials),
+      Math.min(unitHi, Math.max(rules.minUnits, unitHi)),
+      specialTarget,
+      rules.maxHeroes,
+      rules.maxSpies,
+      rules.maxMedics,
+    );
+  }
+  function rollCap(max) {
+    if (max == null) return null;
+    return rnd(max + 1);
   }
   const unitCopies = copies.filter(function (c) {
     return !c.special;
@@ -3474,13 +3489,21 @@ function buildRandomCounts(copies, rules, rng) {
       specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - rules.minUnits));
     const unitTarget = rules.minUnits + rnd(Math.max(0, unitHi - rules.minUnits) + 1);
     const specialTarget = specialHi === 0 ? 0 : rnd(specialHi + 1);
-    chosen = attempt(units, specials, unitTarget, specialTarget);
+    // Espias/medicos/heroes: 0..max (maximo, no "siempre el tope").
+    chosen = attempt(
+      units,
+      specials,
+      unitTarget,
+      specialTarget,
+      rollCap(rules.maxHeroes),
+      rollCap(rules.maxSpies),
+      rollCap(rules.maxMedics),
+    );
   }
   if (!chosen) {
     let specialHi = Math.min(rules.maxSpecial, specialCopies.length);
     if (rules.maxDeck != null)
       specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - rules.minUnits));
-    // Intenta con varias cantidades de especiales, incluyendo el maximo.
     const targets = [specialHi, Math.min(specialHi, 3), Math.min(specialHi, 1), 0];
     for (let i = 0; i < targets.length && !chosen; i++)
       chosen = greedy(unitCopies, specialCopies, targets[i]);
