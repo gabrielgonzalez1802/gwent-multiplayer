@@ -3365,6 +3365,20 @@ function trimToRules(cards, rules) {
     return 0;
   });
   if (!noSpyRoll || noSpyRoll.stats.spy !== 0) console.error("random spy max not quota");
+  // Heroes: no siempre el mismo indice cuando hay cupo > 0.
+  const heroSeen = {};
+  let heroDecks = 0;
+  for (let i = 0; i < 80; i++) {
+    const r = buildRandomCounts(copies, classic, Math.random);
+    if (!r || r.stats.hero < 1) continue;
+    heroDecks++;
+    Object.keys(r.counts).forEach(function (idx) {
+      const n = Number(idx);
+      if (n < 4) heroSeen[n] = (heroSeen[n] || 0) + 1;
+    });
+  }
+  if (heroDecks > 10 && Object.keys(heroSeen).length < 2)
+    console.error("random heroes not varied");
 })();
 
 function buildRandomCounts(copies, rules, rng) {
@@ -3388,13 +3402,8 @@ function buildRandomCounts(copies, rules, rng) {
     if (rules.maxDeck != null) unitHi = Math.min(unitHi, rules.maxDeck);
     return unitHi;
   }
-  // Caps de reglas (maximo, no cuota fija).
-  function underCap(card, hero, spy, medic, strength, heroCap, spyCap, medicCap) {
-    if (heroCap != null && card.hero && hero + 1 > heroCap) return false;
-    if (spyCap != null && card.spy && spy + 1 > spyCap) return false;
-    if (medicCap != null && card.medic && medic + 1 > medicCap) return false;
-    if (rules.maxStrength != null && strength + card.strength > rules.maxStrength) return false;
-    return true;
+  function fitsStrength(strength, card) {
+    return rules.maxStrength == null || strength + card.strength <= rules.maxStrength;
   }
   function pack(chosen, unitCount, hero, spy, medic, strength, spec, weather) {
     const counts = {};
@@ -3414,28 +3423,37 @@ function buildRandomCounts(copies, rules, rng) {
     if (deckProblems(stats, rules).length) return null;
     return { counts: counts, stats: stats };
   }
-  // heroCap/spyCap/medicCap: tope de este intento (0..max). null = sin tope de tipo.
-  function attempt(units, specials, unitTarget, specialTarget, heroCap, spyCap, medicCap) {
-    if (unitTarget < rules.minUnits || units.length < rules.minUnits) return null;
-    const chosen = [];
-    let hero = 0;
-    let spy = 0;
-    let medic = 0;
-    let strength = 0;
-    let unitCount = 0;
-    for (let i = 0; i < units.length && unitCount < unitTarget; i++) {
-      const card = units[i];
-      if (!underCap(card, hero, spy, medic, strength, heroCap, spyCap, medicCap)) continue;
-      chosen.push(card);
-      unitCount++;
-      if (card.hero) hero++;
-      if (card.spy) spy++;
-      if (card.medic) medic++;
+  function rollCap(max) {
+    if (max == null) return null;
+    return rnd(max + 1);
+  }
+  // Cupo de heroes del intento: regla si existe; si no, 0..min(4,pool) solo variedad.
+  // ponytail: clasico sin maxHeroes; techo suave 4. Subir si se quiere mas heroes al azar.
+  function rollHeroWant(heroPool) {
+    if (rules.maxHeroes != null) return rollCap(rules.maxHeroes);
+    return rnd(Math.min(4, heroPool.length) + 1);
+  }
+  // Toma hasta `want` cartas al azar del pool que quepan en fuerza; marca _taken.
+  function takeRandom(pool, want, strength) {
+    const out = [];
+    if (want == null || want <= 0) return { cards: out, strength: strength };
+    const order = shuffle(pool);
+    for (let i = 0; i < order.length && out.length < want; i++) {
+      const card = order[i];
+      if (card._taken) continue;
+      if (!fitsStrength(strength, card)) continue;
+      card._taken = true;
+      out.push(card);
       strength += card.strength;
     }
-    if (unitCount < rules.minUnits) return null;
+    return { cards: out, strength: strength };
+  }
+  function clearTaken(list) {
+    for (let i = 0; i < list.length; i++) delete list[i]._taken;
+  }
+  function addSpecials(chosen, specials, specialTarget, weatherStart) {
     let spec = 0;
-    let weather = 0;
+    let weather = weatherStart || 0;
     for (let i = 0; i < specials.length && spec < specialTarget; i++) {
       if (rules.maxDeck != null && chosen.length >= rules.maxDeck) break;
       if (
@@ -3448,27 +3466,70 @@ function buildRandomCounts(copies, rules, rng) {
       spec++;
       if (specials[i].weather) weather++;
     }
-    return pack(chosen, unitCount, hero, spy, medic, strength, spec, weather);
+    return { spec: spec, weather: weather };
   }
-  // Relleno seguro: respeta maximos de reglas (puede usar 0..max, no fuerza el max).
-  function greedy(units, specials, specialTarget) {
-    const ordered = units.slice().sort(function (a, b) {
-      return a.strength - b.strength || Number(a.hero) - Number(b.hero);
+  // Cupos primero (heroes/espias/medicos al azar del pool), luego relleno mezclado.
+  function attempt(unitTarget, specialTarget, heroWant, spyWant, medicWant, fillWeakFirst) {
+    if (unitTarget < rules.minUnits || unitCopies.length < rules.minUnits) return null;
+    clearTaken(unitCopies);
+    const heroes = unitCopies.filter(function (c) {
+      return c.hero;
     });
-    const unitHi = unitHiCap(ordered);
-    return attempt(
-      ordered,
-      shuffle(specials),
-      Math.min(unitHi, Math.max(rules.minUnits, unitHi)),
-      specialTarget,
-      rules.maxHeroes,
-      rules.maxSpies,
-      rules.maxMedics,
-    );
-  }
-  function rollCap(max) {
-    if (max == null) return null;
-    return rnd(max + 1);
+    const spies = unitCopies.filter(function (c) {
+      return c.spy;
+    });
+    const medics = unitCopies.filter(function (c) {
+      return c.medic;
+    });
+    let strength = 0;
+    const chosen = [];
+    const hPick = takeRandom(heroes, heroWant == null ? 0 : heroWant, strength);
+    strength = hPick.strength;
+    Array.prototype.push.apply(chosen, hPick.cards);
+    const sPick = takeRandom(spies, spyWant == null ? 0 : spyWant, strength);
+    strength = sPick.strength;
+    Array.prototype.push.apply(chosen, sPick.cards);
+    const mPick = takeRandom(medics, medicWant == null ? 0 : medicWant, strength);
+    strength = mPick.strength;
+    Array.prototype.push.apply(chosen, mPick.cards);
+    let hero = hPick.cards.length;
+    let spy = chosen.filter(function (c) {
+      return c.spy;
+    }).length;
+    let medic = chosen.filter(function (c) {
+      return c.medic;
+    }).length;
+    // Tras el cupo: no añadir mas de ese tipo en el relleno (tope del intento).
+    const heroCap = heroWant == null && rules.maxHeroes == null ? null : hero;
+    const spyCap = spyWant == null && rules.maxSpies == null ? null : spy;
+    const medicCap = medicWant == null && rules.maxMedics == null ? null : medic;
+    let rest = unitCopies.filter(function (c) {
+      return !c._taken;
+    });
+    rest = fillWeakFirst
+      ? rest.slice().sort(function (a, b) {
+          return a.strength - b.strength;
+        })
+      : shuffle(rest);
+    let unitCount = chosen.length;
+    for (let i = 0; i < rest.length && unitCount < unitTarget; i++) {
+      const card = rest[i];
+      if (heroCap != null && card.hero && hero + 1 > heroCap) continue;
+      if (spyCap != null && card.spy && spy + 1 > spyCap) continue;
+      if (medicCap != null && card.medic && medic + 1 > medicCap) continue;
+      if (!fitsStrength(strength, card)) continue;
+      card._taken = true;
+      chosen.push(card);
+      unitCount++;
+      if (card.hero) hero++;
+      if (card.spy) spy++;
+      if (card.medic) medic++;
+      strength += card.strength;
+    }
+    if (unitCount < rules.minUnits) return null;
+    const specials = shuffle(specialCopies);
+    const sp = addSpecials(chosen, specials, specialTarget, 0);
+    return pack(chosen, unitCount, hero, spy, medic, strength, sp.spec, sp.weather);
   }
   const unitCopies = copies.filter(function (c) {
     return !c.special;
@@ -3478,26 +3539,28 @@ function buildRandomCounts(copies, rules, rng) {
   });
   const unitHi = unitHiCap(unitCopies);
   if (unitHi < rules.minUnits || unitCopies.length < rules.minUnits) return null;
+  const heroPoolSize = unitCopies.filter(function (c) {
+    return c.hero;
+  }).length;
   let chosen = null;
   for (let n = 0; n < 48 && !chosen; n++) {
-    const units = n % 3 === 0
-      ? unitCopies.slice().sort(function (a, b) { return a.strength - b.strength; })
-      : shuffle(unitCopies);
-    const specials = shuffle(specialCopies);
-    let specialHi = Math.min(rules.maxSpecial, specials.length);
+    let specialHi = Math.min(rules.maxSpecial, specialCopies.length);
     if (rules.maxDeck != null)
       specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - rules.minUnits));
     const unitTarget = rules.minUnits + rnd(Math.max(0, unitHi - rules.minUnits) + 1);
     const specialTarget = specialHi === 0 ? 0 : rnd(specialHi + 1);
-    // Espias/medicos/heroes: 0..max (maximo, no "siempre el tope").
+    // Espias/medicos/heroes: 0..max (maximo, no cuota fija). Heroes sin max: variedad 0..4.
     chosen = attempt(
-      units,
-      specials,
       unitTarget,
       specialTarget,
-      rollCap(rules.maxHeroes),
+      rollHeroWant(
+        unitCopies.filter(function (c) {
+          return c.hero;
+        }),
+      ),
       rollCap(rules.maxSpies),
       rollCap(rules.maxMedics),
+      false,
     );
   }
   if (!chosen) {
@@ -3505,9 +3568,20 @@ function buildRandomCounts(copies, rules, rng) {
     if (rules.maxDeck != null)
       specialHi = Math.min(specialHi, Math.max(0, rules.maxDeck - rules.minUnits));
     const targets = [specialHi, Math.min(specialHi, 3), Math.min(specialHi, 1), 0];
-    for (let i = 0; i < targets.length && !chosen; i++)
-      chosen = greedy(unitCopies, specialCopies, targets[i]);
+    const heroWant =
+      rules.maxHeroes != null ? rules.maxHeroes : Math.min(4, heroPoolSize);
+    for (let i = 0; i < targets.length && !chosen; i++) {
+      chosen = attempt(
+        Math.min(unitHi, Math.max(rules.minUnits, unitHi)),
+        targets[i],
+        heroWant,
+        rules.maxSpies,
+        rules.maxMedics,
+        true,
+      );
+    }
   }
+  clearTaken(unitCopies);
   return chosen;
 }
 
@@ -4754,7 +4828,7 @@ function somCarta() {
 var lastSound = "";
 var lastSoundAt = 0;
 
-var audioPrefs = { music: true, sfx: true, vol: 0.2 };
+var audioPrefs = { music: false, sfx: false, vol: 0.2 };
 
 function loadAudioPrefs() {
   try {
@@ -4838,10 +4912,10 @@ function ensureAudioDom() {
     '<button id="audio-open" type="button" aria-label="Audio" title="Audio">♫</button>' +
     '<div id="audio-panel" class="hide">' +
     '<div class="audio-title">' + (typeof t === "function" ? t("audio_title") : "Audio") + "</div>" +
-    '<label class="audio-row"><input id="audio-music" type="checkbox" checked /><span>' +
+    '<label class="audio-row"><input id="audio-music" type="checkbox" /><span>' +
     (typeof t === "function" ? t("audio_music") : "Music") +
     "</span></label>" +
-    '<label class="audio-row"><input id="audio-sfx" type="checkbox" checked /><span>' +
+    '<label class="audio-row"><input id="audio-sfx" type="checkbox" /><span>' +
     (typeof t === "function" ? t("audio_sfx") : "Effects") +
     "</span></label>" +
     '<div class="audio-row audio-vol-row">' +
