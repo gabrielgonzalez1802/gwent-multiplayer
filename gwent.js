@@ -4784,8 +4784,56 @@ function showAudioBox() {
   if (box) box.style.display = "";
 }
 
+function ensureAudioStyles() {
+  if (document.getElementById("audio-runtime-style")) return;
+  var s = document.createElement("style");
+  s.id = "audio-runtime-style";
+  s.textContent =
+    "#toggle-music,#toggle-music.music-customization{position:fixed!important;top:56px;left:12px;transform:none!important;z-index:5000;width:auto;height:auto;}" +
+    "#audio-box{position:relative;display:inline-block}" +
+    "#audio-open{width:40px;height:40px;padding:0;border:1px solid rgba(180,160,90,.55);background:rgba(12,12,12,.92);color:goldenrod;font-size:20px;cursor:pointer}" +
+    "#audio-panel{position:absolute;top:calc(100% + 6px);left:0;min-width:200px;padding:10px 12px;background:rgba(12,12,12,.96);border:1px solid rgba(180,160,90,.5);display:flex;flex-direction:column;gap:8px;box-shadow:0 6px 18px rgba(0,0,0,.45)}" +
+    "#audio-panel.hide{display:none}" +
+    ".audio-title{color:goldenrod;font-size:13px;font-weight:600}" +
+    ".audio-row{display:flex;align-items:center;gap:8px;margin:0;color:#ddd;font-size:12px;cursor:pointer}" +
+    "#audio-vol{flex:1;min-width:70px}" +
+    "#audio-vol-down,#audio-vol-up{width:26px;height:26px;padding:0;border:1px solid rgba(180,160,90,.4);background:#181818;color:#ddd;cursor:pointer}";
+  document.head.appendChild(s);
+}
+
+// Si el index.html cacheado es viejo (solo ♫), el JS nuevo monta el panel igual.
+function ensureAudioDom() {
+  ensureAudioStyles();
+  var host = document.getElementById("toggle-music");
+  if (!host) return;
+  if (document.getElementById("audio-box") && document.getElementById("audio-panel")) {
+    host.style.display = host.style.display === "none" ? "" : host.style.display;
+    return;
+  }
+  host.innerHTML =
+    '<div id="audio-box">' +
+    '<button id="audio-open" type="button" aria-label="Audio" title="Audio">♫</button>' +
+    '<div id="audio-panel" class="hide">' +
+    '<div class="audio-title">' + (typeof t === "function" ? t("audio_title") : "Audio") + "</div>" +
+    '<label class="audio-row"><input id="audio-music" type="checkbox" checked /><span>' +
+    (typeof t === "function" ? t("audio_music") : "Music") +
+    "</span></label>" +
+    '<label class="audio-row"><input id="audio-sfx" type="checkbox" checked /><span>' +
+    (typeof t === "function" ? t("audio_sfx") : "Effects") +
+    "</span></label>" +
+    '<div class="audio-row audio-vol-row">' +
+    '<button id="audio-vol-down" type="button" aria-label="-">−</button>' +
+    '<input id="audio-vol" type="range" min="0" max="100" value="70" />' +
+    '<button id="audio-vol-up" type="button" aria-label="+">+</button>' +
+    '<span id="audio-vol-label">70%</span>' +
+    "</div></div></div>";
+}
+
 function bindAudioControls() {
+  ensureAudioDom();
   var box = document.getElementById("audio-box");
+  var open = document.getElementById("audio-open");
+  var panel = document.getElementById("audio-panel");
   var musicEl = document.getElementById("audio-music");
   var sfxEl = document.getElementById("audio-sfx");
   var volEl = document.getElementById("audio-vol");
@@ -4796,6 +4844,15 @@ function bindAudioControls() {
       event.stopPropagation();
     });
   }
+  if (open && panel) {
+    open.addEventListener("click", function (event) {
+      event.stopPropagation();
+      panel.classList.toggle("hide");
+    });
+  }
+  document.addEventListener("click", function () {
+    if (panel) panel.classList.add("hide");
+  });
   if (musicEl) {
     musicEl.addEventListener("change", function () {
       audioPrefs.music = !!musicEl.checked;

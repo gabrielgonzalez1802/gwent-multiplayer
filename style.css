@@ -167,7 +167,6 @@ html {
 	right: auto;
 	bottom: auto;
 	width: auto;
-	min-width: 200px;
 	height: auto;
 	font-size: 13px;
 	color: #ddd;
@@ -183,14 +182,39 @@ html {
 }
 
 #audio-box {
+	position: relative;
+	display: inline-block;
+}
+
+#audio-open {
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	border: 1px solid rgba(180, 160, 90, 0.55);
+	background: rgba(12, 12, 12, 0.92);
+	color: goldenrod;
+	font-size: 20px;
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+#audio-panel {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	min-width: 200px;
+	padding: 10px 12px;
+	background: rgba(12, 12, 12, 0.96);
+	border: 1px solid rgba(180, 160, 90, 0.5);
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-	padding: 8px 10px;
-	background: rgba(12, 12, 12, 0.92);
-	border: 1px solid rgba(180, 160, 90, 0.5);
-	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
-	min-width: 180px;
+	gap: 8px;
+}
+
+#audio-panel.hide {
+	display: none;
 }
 
 .audio-title {
