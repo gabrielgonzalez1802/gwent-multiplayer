@@ -383,7 +383,7 @@ class ControllerAI {
 			if (!row.effects.mardroeme)
 				n = row.cards.filter(c => c.name === "Young Berserker").length;
 			else
-				n = row.cards.filter(c => "Transformed Young Vildkaarl").length;
+				n = row.cards.filter(c => c.name === "Transformed Young Vildkaarl").length;
 			score = 8*((n+1)*(n+1) - n*n) + n*score;
 		}
 		return Math.max(1, score);

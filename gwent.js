@@ -308,13 +308,14 @@ async function onSocketMessage(event) {
       await Promise.all(
         graveCards.map((card) => board.toRow(card, player_op.grave)),
       );
+      if (typeof finishSkelligeWait === "function") finishSkelligeWait();
       break;
     }
 
     case "monstersKeepCard": {
-      const keptCard = board
-        .getRow(data.card, data.card.row, player_op)
-        .findCard((c) => c.filename === data.card.filename);
+      const keptCard = board.findCardByName(
+        data.card && data.card.filename,
+      );
       if (!keptCard) break;
       keptCard.noRemove = true;
       game.roundStart.push(async () => {
@@ -434,9 +435,9 @@ class Player {
 
   // Puts the player in the passed state
   setPassed(hasPassed) {
-    if (this.passed ^ hasPassed)
-      document.getElementById("passed-" + this.tag).classList.toggle("passed");
-    this.passed = hasPassed;
+    var el = document.getElementById("passed-" + this.tag);
+    if (el) el.classList.toggle("passed", !!hasPassed);
+    this.passed = !!hasPassed;
   }
 
   // Sets up board for turn
@@ -1079,7 +1080,7 @@ class Row extends CardContainer {
 
   // Calculates the current power of a card affected by row affects
   calcCardScore(card) {
-    if (card.name === "decoy") return 0;
+    if (card.name === "Decoy" || card.name === "decoy") return 0;
     let total = card.basePower;
     if (card.hero) return total;
     if (this.effects.weather) total = weatheredPower(total, this.halfWeather);
@@ -1268,14 +1269,13 @@ class Board {
 
   // Finds the first card by a given filename; If none are found returns null
   findCardByName(filename, targetRow = null) {
-    let foundCard = null;
-    for (const row of board.row) {
+    if (!filename) return null;
+    for (const row of this.row) {
       if (targetRow !== null && targetRow !== row.elem_parent.id) continue;
-      keptCard = row.cards.find((bc) => bc.filename === data.card.filename);
-      if (foundCard) break;
+      const found = row.cards.find((bc) => bc.filename === filename);
+      if (found) return found;
     }
-
-    return foundCard ?? null;
+    return null;
   }
 
   // Sends and translates a card from the source to the Deck of the card's holder
@@ -1337,7 +1337,7 @@ class Board {
   getRow(card, row_name, player) {
     player = player ? player : card ? card.holder : player_me;
     let isMe = player === player_me;
-    let isSpy = card.abilities.includes("spy");
+    let isSpy = !!(card.abilities && card.abilities.includes("spy"));
     switch (row_name) {
       case "weather":
         return weather;
@@ -1348,6 +1348,16 @@ class Board {
         return this.row[isMe ^ isSpy ? 4 : 1];
       case "siege":
         return this.row[isMe ^ isSpy ? 5 : 0];
+      case "agile": {
+        let t = "close";
+        for (const r of this.row) {
+          if (r.cards.includes(card)) {
+            t = r.type;
+            break;
+          }
+        }
+        return this.getRow(card, t, player);
+      }
       case "grave":
         return player.grave;
       case "deck":
@@ -1425,16 +1435,12 @@ class Game {
   initPlayers(p1, p2, quiet) {
     let l1 = ability_dict[p1.leader.abilities[0]];
     let l2 = ability_dict[p2.leader.abilities[0]];
-    if (
-      l1 === ability_dict["emhyr_whiteflame"] ||
-      l2 === ability_dict["emhyr_whiteflame"]
-    ) {
-      p1.disableLeader();
-      p2.disableLeader();
-    } else {
-      initLeader(p1, l1);
-      initLeader(p2, l2);
-    }
+    const wf1 = l1 === ability_dict["emhyr_whiteflame"];
+    const wf2 = l2 === ability_dict["emhyr_whiteflame"];
+    if (wf2) p1.disableLeader();
+    else initLeader(p1, l1);
+    if (wf1) p2.disableLeader();
+    else initLeader(p2, l2);
     if (p1.deck.faction === p2.deck.faction && p1.deck.faction === "scoiatael")
       return;
     initFaction(p1);
@@ -2668,15 +2674,31 @@ class Carousel {
 
     if (!Carousel.elem) {
       Carousel.elem = document.getElementById("carousel");
-      Carousel.elem.children[0].addEventListener(
+      var strip = Carousel.elem.children[0];
+      var faces = strip.getElementsByClassName("card-lg");
+      var shiftBy = [-2, -1, 0, 1, 2];
+      for (var i = 0; i < faces.length; i++) {
+        (function (n) {
+          faces[n].addEventListener("click", function (event) {
+            event.stopPropagation();
+            if (!Carousel.curr) return;
+            if (shiftBy[n] === 0) Carousel.curr.select(event);
+            else Carousel.curr.shift(event, shiftBy[n]);
+          });
+        })(i);
+      }
+      strip.addEventListener(
         "click",
-        () => Carousel.curr.cancel(),
+        function (event) {
+          if (event.target && event.target.closest && event.target.closest(".card-lg")) return;
+          if (Carousel.curr) Carousel.curr.cancel();
+        },
         false,
       );
     }
     this.elem = Carousel.elem;
     document.getElementsByTagName("main")[0].classList.remove("noclick");
-
+    this.elem.style.pointerEvents = "auto";
     this.elem.children[0].classList.remove("noclick");
     this.previews = this.elem.getElementsByClassName("card-lg");
     this.desc = this.elem.getElementsByClassName("card-description")[0];
@@ -2708,7 +2730,7 @@ class Carousel {
 
     this.elem.classList.remove("hide");
     paintCarouselChrome(this);
-    if (!this.bExit) ui.enablePlayer(true);
+    ui.enablePlayer(true);
     tocar("explaining", false);
     if (typeof onTutorialCarousel === "function") onTutorialCarousel();
   }
@@ -2723,9 +2745,10 @@ class Carousel {
 
   // Called by client to perform action on the middle card in focus
   async select(event) {
-    (event || window.event).stopPropagation();
+    if (event && event.stopPropagation) event.stopPropagation();
     if (typeof dismissCarouselHint === "function") dismissCarouselHint();
-    if (this.closed) return;
+    if (this.closed || this._busy) return;
+    this._busy = true;
     --this.count;
     const last = this.isLastSelection();
     const pickIndex = this.indices[this.index];
@@ -2735,6 +2758,10 @@ class Carousel {
     else if (this.count <= 0 && !this.bExit) ui.enablePlayer(false);
 
     const actionString = this.action.toString();
+    const pickCard = this.container && this.container.cards
+      ? this.container.cards[pickIndex]
+      : null;
+    const pickName = pickCard && pickCard.filename;
     tocar("redraw", false);
     let resp;
     try {
@@ -2750,7 +2777,7 @@ class Carousel {
     } else if (actionString.includes("board.toWeather")) {
       setTimeout(() => {
         netSend(
-          JSON.stringify({ type: "weatherDraw", card: resp.filename }),
+          JSON.stringify({ type: "weatherDraw", card: pickName || (resp && resp.filename) }),
         );
       }, 1000);
     } else if (actionString.includes("board.toGrave")) {
@@ -2768,7 +2795,11 @@ class Carousel {
         );
       }, 1000);
     }
-    if (last && !this.cancelled) return this.finishClose();
+    if (last && !this.cancelled) {
+      this._busy = false;
+      return this.finishClose();
+    }
+    this._busy = false;
     this.update();
   }
 

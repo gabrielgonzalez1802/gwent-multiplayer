@@ -14,6 +14,28 @@ function sendMedicDraw(card) {
   }, 1500);
 }
 
+function finishSkelligeWait() {
+  if (game && game._skelligeWait) {
+    var done = game._skelligeWait;
+    game._skelligeWait = null;
+    game.pendingSkellige = false;
+    done();
+  } else if (game) {
+    game.pendingSkellige = true;
+  }
+}
+
+function waitSkelligeAbility() {
+  return new Promise(function (resolve) {
+    if (game && game.pendingSkellige) {
+      game.pendingSkellige = false;
+      resolve();
+      return;
+    }
+    if (game) game._skelligeWait = resolve;
+  });
+}
+
 function waitMedicDraw(grave) {
   return new Promise(function (resolve) {
     var done = false;
@@ -93,7 +115,11 @@ var ability_dict = {
 			if (row.effects.mardroeme === 0)
 				return;
 			row.removeCard(card);
-			let cardId = card.name.indexOf("Young") === -1 ? 206 : 207;
+			let want = card.name.indexOf("Young") === -1
+				? "Transformed Vildkaarl"
+				: "Transformed Young Vildkaarl";
+			let cardId = card_dict.findIndex(c => c.name === want);
+			if (cardId < 0) return;
 			await row.addCard(new Card(card_dict[cardId], card.holder));
 		}
 	},
@@ -105,11 +131,7 @@ var ability_dict = {
 			await board.toGrave(card, card.holder.hand);
 		},
 		placed: async (card, row) => {
-			if (row !== undefined)
-				row.cards.splice( row.cards.indexOf(card), 1);
 			let maxUnits = board.row.map( r => [r,r.maxUnits()] ).filter( p => p[1].length > 0);
-			if (row !== undefined)
-				row.cards.push(card);
 			let maxPower = maxUnits.reduce( (a,p) => Math.max(a, p[1][0].power), 0 );
 			let scorched = maxUnits.filter( p => p[1][0].power === maxPower);
 			let cards = scorched.reduce( (a,p) => a.concat( p[1].map(u => [p[0], u])), []);
@@ -209,7 +231,9 @@ var ability_dict = {
 		name: "Tight Bond",
 		description: "Place next to a card with the same name to double the strength of both cards. ",
 		placed: async card => {
-			let bonds = board.getRow(card, card.row, card.holder).findCards(c => c.name === card.name);
+			let row = board.row.find(r => r.cards.includes(card));
+			if (!row) return;
+			let bonds = row.findCards(c => c.name === card.name);
 			if (bonds.length > 1)
 				await Promise.all( bonds.map(c => c.animate("bond")) );
 		}
@@ -218,6 +242,7 @@ var ability_dict = {
 		name: "Avenger",
 		description: "When this card is removed from the battlefield, it summons a powerful new Unit Card to take its place. ",
 		removed: async (card) => {
+			// Token TW3: Bovine Defense Force no va en el mazo (count 0).
 			let bdf = new Card(card_dict[21], card.holder);
 			bdf.removed.push( () => setTimeout( () => bdf.holder.grave.removeCard(bdf), 1001) );
 			await board.addCardToRow(bdf, "close", card.holder);
@@ -531,25 +556,25 @@ var ability_dict = {
 	francesca_hope: {
 		description: "Move agile units to whichever valid row maximizes their strength (don't move units already in optimal row).",
 		activated: async card => {
-			let close = board.getRow(card, "close");
-			let ranged =  board.getRow(card, "ranged");
 			let cards = ability_dict["francesca_hope"].helper(card);
-			await Promise.all(cards.map(async p => await board.moveTo(p.card, p.row === close ? ranged : close, p.row) ) );
-			
+			await Promise.all(cards.map(async p => await board.moveTo(p.card, p.dest, p.row)));
 		},
 		weight: card => {
 			let cards = ability_dict["francesca_hope"].helper(card);
 			return cards.reduce((a,c) => a + c.weight, 0);
 		},
 		helper: card => {
-			let close = board.getRow(card, "close");
-			let ranged =  board.getRow(card, "ranged");
-			return validCards(close).concat( validCards(ranged) );
-			function validCards(cont) {
-				return cont.findCards(c => c.row === "agile").filter(c => dif(c,cont) > 0).map(c => ({card:c, row:cont, weight:dif(c,cont)}))
+			let sides = [card.holder, card.holder.opponent()];
+			return sides.reduce(function (out, player) {
+				let close = board.getRow(card, "close", player);
+				let ranged = board.getRow(card, "ranged", player);
+				return out.concat(validCards(close, ranged), validCards(ranged, close));
+			}, []);
+			function validCards(from, to) {
+				return from.findCards(c => c.row === "agile").filter(c => dif(c, from, to) > 0).map(c => ({card:c, row:from, dest:to, weight:dif(c, from, to)}));
 			}
-			function dif(card, source) {
-				return (source === close ? ranged : close).calcCardScore(card) - card.power;
+			function dif(c, source, dest) {
+				return dest.calcCardScore(c) - c.power;
 			}
 		}
 	},
@@ -587,4 +612,9 @@ var ability_dict = {
 	if (musterBase("Gaunter O'Dimm") !== "Gaunter O'Dimm") throw new Error("muster gaunter");
 	if (musterBase("Gaunter O'Dimm - Darkness") !== "Gaunter O'Dimm") throw new Error("muster darkness");
 	if (musterBase("Cerys - Clan Drummond Shield Maiden") !== "Cerys") throw new Error("muster cerys");
+	if (card_dict.findIndex(c => c.name === "Transformed Vildkaarl") < 0) throw new Error("vildkaarl idx");
+	if (card_dict.findIndex(c => c.name === "Transformed Young Vildkaarl") < 0) throw new Error("young vildkaarl idx");
+	if (card_dict[5].name !== "Commander's Horn") throw new Error("horn idx");
+	if (card_dict[21].name !== "Bovine Defense Force") throw new Error("bdf idx");
+	if (card_dict[196].name !== "Hemdall") throw new Error("hemdall idx");
 })();

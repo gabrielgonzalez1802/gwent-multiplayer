@@ -97,6 +97,8 @@ var factions = {
               }),
             );
           }
+        } else {
+          await waitSkelligeAbility();
         }
         return true;
       }),
