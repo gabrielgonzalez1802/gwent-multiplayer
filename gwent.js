@@ -4828,21 +4828,30 @@ function somCarta() {
 var lastSound = "";
 var lastSoundAt = 0;
 
-var audioPrefs = { music: false, sfx: false, vol: 0.2 };
+// ver 2: musica/sfx apagados por defecto (ignora prefs viejas con true).
+var audioPrefs = { music: false, sfx: false, vol: 0.2, ver: 2 };
 
 function loadAudioPrefs() {
   try {
     var raw = JSON.parse(localStorage.getItem("gwent-audio") || "null");
     if (!raw || typeof raw !== "object") return;
-    if (typeof raw.music === "boolean") audioPrefs.music = raw.music;
-    if (typeof raw.sfx === "boolean") audioPrefs.sfx = raw.sfx;
     var vol = Number(raw.vol);
     if (Number.isFinite(vol)) audioPrefs.vol = Math.max(0, Math.min(1, vol));
+    // Prefs sin ver (o <2): eran el default antiguo (todo on). No reactivar.
+    if (Number(raw.ver) >= 2) {
+      if (typeof raw.music === "boolean") audioPrefs.music = raw.music;
+      if (typeof raw.sfx === "boolean") audioPrefs.sfx = raw.sfx;
+    } else {
+      audioPrefs.music = false;
+      audioPrefs.sfx = false;
+      saveAudioPrefs();
+    }
   } catch (e) {}
 }
 
 function saveAudioPrefs() {
   try {
+    audioPrefs.ver = 2;
     localStorage.setItem("gwent-audio", JSON.stringify(audioPrefs));
   } catch (e) {}
 }
