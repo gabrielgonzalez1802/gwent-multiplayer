@@ -2799,13 +2799,23 @@ class Carousel {
   finishClose() {
     if (this.closed) return;
     this.closed = true;
+    var wasRedraw = this.title === "redraw_hint";
     this.releaseVisual();
     const done = this._onDone;
     this._onDone = null;
     if (done) done();
     if (!Carousel.curr) ui.quitCarousel();
     restoreBoardClicks();
-    if (tutorialOn && tutorialPhase === "match" && !tutorialLive) enterTutorialLive();
+    // Tras el redraw del tutorial: seguir con mano/filas/pasar/gemas (no saltar a live).
+    if (
+      wasRedraw &&
+      tutorialOn &&
+      tutorialPhase === "match" &&
+      !tutorialLive &&
+      typeof onTutorialAfterRedraw === "function"
+    ) {
+      onTutorialAfterRedraw();
+    }
   }
 
   // Updates the visuals of the current selection of cards
@@ -5966,6 +5976,7 @@ var tutorialPhase = "deck";
 var tutorialStep = 0;
 var tutorialCpuPrev = "";
 var tutorialTarget = null;
+var tutorialRedrawDone = false;
 var TUTORIAL_DECK = [
   { target: "faction-title", key: "tut_faction" },
   { target: "card-bank", key: "tut_bank" },
@@ -6075,6 +6086,7 @@ function endTutorial() {
   tutorialLive = false;
   tutorialPhase = "deck";
   tutorialStep = 0;
+  tutorialRedrawDone = false;
   clearTutorialTarget();
   document.getElementById("tutorial-panel").classList.add("hide");
   document.getElementById("tutorial-game").classList.remove("on");
@@ -6091,10 +6103,15 @@ function startTutorial() {
     endTutorial();
     return;
   }
+  if (gameMode === "online" && (createdSessionId || joinedSessionId || player_me)) {
+    if (typeof gameAlert === "function") gameAlert(t("tut_busy"));
+    return;
+  }
   tutorialOn = true;
   tutorialLive = false;
   tutorialPhase = "deck";
   tutorialStep = 0;
+  tutorialRedrawDone = false;
   renderTutorial();
 }
 
@@ -6113,6 +6130,7 @@ function onTutorialCarousel() {
   if (!tutorialOn || tutorialPhase !== "match" || tutorialLive) return;
   if (!Carousel.curr || Carousel.curr.title !== "redraw_hint") return;
   tutorialStep = 0;
+  tutorialRedrawDone = false;
   renderTutorial();
   document.getElementById("tutorial-next").classList.add("hide");
   document.getElementById("tutorial-back").classList.add("hide");
@@ -6121,21 +6139,36 @@ function onTutorialCarousel() {
 
 function onTutorialAfterRedraw() {
   if (!tutorialOn || tutorialPhase !== "match" || tutorialLive) return;
-  if (tutorialStep !== 0) return;
-  tutorialStep = 1;
+  tutorialRedrawDone = true;
+  if (tutorialStep < 1) tutorialStep = 1;
   renderTutorial();
 }
 
 function startTutorialMatch() {
+  if (typeof dm === "undefined" || !dm) return;
+  // Practica: si el mazo no cumple reglas, genera uno valido al azar.
+  if (typeof dm.deckWarning === "function" && dm.deckWarning()) {
+    if (typeof dm.randomDeck === "function") dm.randomDeck();
+  }
+  if (typeof dm.deckWarning === "function" && dm.deckWarning()) {
+    if (typeof gameAlert === "function") gameAlert(dm.deckWarning());
+    return;
+  }
+  if (!dm.leader) {
+    if (typeof gameAlert === "function") gameAlert(t("need_leader"));
+    return;
+  }
   tutorialCpuPrev = cpuLevel;
   cpuLevel = "principiante";
   document.getElementById("cpu-level").value = "principiante";
   tutorialPhase = "match";
   tutorialLive = false;
   tutorialStep = 0;
+  tutorialRedrawDone = false;
   dm.startOffline();
   if (gameMode !== "offline") {
     tutorialPhase = "deck";
+    tutorialRedrawDone = false;
     cpuLevel = tutorialCpuPrev;
     document.getElementById("cpu-level").value = tutorialCpuPrev;
     tutorialCpuPrev = "";
@@ -6146,13 +6179,24 @@ function startTutorialMatch() {
 }
 
 (function checkTutorial() {
+  var fails = 0;
   TUTORIAL_DECK.concat(TUTORIAL_MATCH).forEach(function (step) {
-    if (!document.getElementById(step.target)) console.error("tutorial target", step.target);
+    if (!document.getElementById(step.target)) {
+      console.error("tutorial target", step.target);
+      fails++;
+    }
   });
   ["unit", "hero", "agile", "spy", "medic", "muster", "morale", "bond", "avenger", "scorch", "horn", "decoy", "frost", "fog", "rain", "storm", "clear", "mardroeme", "berserker", "leader"].forEach(function (kind) {
-    if (!TEXTS.en["tut_card_" + kind] || !TEXTS.es["tut_card_" + kind])
+    if (!TEXTS.en["tut_card_" + kind] || !TEXTS.es["tut_card_" + kind]) {
       console.error("tutorial card", kind);
+      fails++;
+    }
   });
+  if (typeof onTutorialAfterRedraw !== "function" || typeof onTutorialCarousel !== "function") {
+    console.error("tutorial hooks");
+    fails++;
+  }
+  if (fails) console.error("tutorial check fails", fails);
 })();
 
 function refreshLocalized() {
@@ -6354,6 +6398,9 @@ document.getElementById("tutorial-game").addEventListener("click", startTutorial
 document.getElementById("tutorial-close").addEventListener("click", endTutorial);
 document.getElementById("tutorial-back").addEventListener("click", function () {
   tutorialStep--;
+  // Tras el redraw no se vuelve al paso del carrusel (ya cerro).
+  if (tutorialPhase === "match" && tutorialRedrawDone && tutorialStep < 1) tutorialStep = 1;
+  if (tutorialStep < 0) tutorialStep = 0;
   renderTutorial();
 });
 document.getElementById("tutorial-next").addEventListener("click", function () {
@@ -6370,5 +6417,7 @@ document.getElementById("tutorial-next").addEventListener("click", function () {
 });
 document.getElementById("tutorial-play").addEventListener("click", startTutorialMatch);
 document.addEventListener("keydown", function (event) {
-  if (event.key === "Escape" && tutorialOn) endTutorial();
+  // Escape solo cierra la guia en el constructor; en partida se usa Cerrar.
+  if (event.key === "Escape" && tutorialOn && tutorialPhase === "deck" && !tutorialLive)
+    endTutorial();
 });
