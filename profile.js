@@ -772,7 +772,12 @@ function chatText(raw) {
 
 function chatWho() {
   var name = accountProfile && accountProfile.name;
-  return name ? String(name).slice(0, 16) : t("you");
+  if (name) return String(name).slice(0, 16);
+  if (typeof liveQuickAlias === "function") {
+    var alias = liveQuickAlias();
+    if (alias) return String(alias).slice(0, 16);
+  }
+  return t("you");
 }
 
 function hideChatToast() {

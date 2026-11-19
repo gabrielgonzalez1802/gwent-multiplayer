@@ -5061,6 +5061,10 @@ function safeName(name) {
 
 function accountLabel() {
   if (accountProfile && accountProfile.name) return safeName(accountProfile.name);
+  if (typeof liveQuickAlias === "function") {
+    var alias = safeName(liveQuickAlias());
+    if (alias) return alias;
+  }
   return t("quick_guest");
 }
 

@@ -179,6 +179,64 @@ function takeNextSeeker(except) {
   return null;
 }
 
+const QUICK_ALIAS_WORDS = [
+  "Lobo",
+  "Cuervo",
+  "Ciervo",
+  "Aguila",
+  "Zorro",
+  "Oso",
+  "Halcon",
+  "Dragon",
+  "Bruma",
+  "Roble",
+  "Risco",
+  "Tormenta",
+  "Ceniza",
+  "Escarcha",
+  "Sombra",
+  "Relampago",
+  "Grifo",
+  "Sirena",
+  "Brujo",
+  "Bruja",
+  "Bardo",
+  "Escudero",
+  "Mercader",
+  "Viajero",
+];
+
+function cleanAlias(raw) {
+  const name = String(raw || "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 16);
+  return name || "";
+}
+
+function makeQuickAlias(used) {
+  const taken = used || new Set();
+  for (let n = 0; n < 48; n++) {
+    const word = QUICK_ALIAS_WORDS[Math.floor(Math.random() * QUICK_ALIAS_WORDS.length)];
+    const tag = generateCode(2);
+    const alias = cleanAlias(word + "_" + tag);
+    if (alias && !taken.has(alias.toLowerCase())) return alias;
+  }
+  return cleanAlias("Jugador_" + generateCode(3)) || "Jugador";
+}
+
+function resolveQuickAliases(prefA, prefB) {
+  const used = new Set();
+  let a = cleanAlias(prefA);
+  let b = cleanAlias(prefB);
+  if (!a) a = makeQuickAlias(used);
+  used.add(a.toLowerCase());
+  if (!b || b.toLowerCase() === a.toLowerCase()) b = makeQuickAlias(used);
+  used.add(b.toLowerCase());
+  return [a, b];
+}
+
 function makeQuickMatch(a, b) {
   if (!isFreeSeeker(a) || !isFreeSeeker(b) || a === b) return false;
   pruneIdleLobbies();
@@ -187,6 +245,9 @@ function makeQuickMatch(a, b) {
   leaveQuickQueue(b);
   a.quickSeeking = false;
   b.quickSeeking = false;
+  const aliases = resolveQuickAliases(a.preferredAlias, b.preferredAlias);
+  a.alias = aliases[0];
+  b.alias = aliases[1];
   const sessionCode = generateCode();
   const session = {
     players: [a, b],
@@ -202,18 +263,34 @@ function makeQuickMatch(a, b) {
   // Ocupados: con sessionCode ya no son buscadores hasta salir.
   a.sessionCode = sessionCode;
   b.sessionCode = sessionCode;
-  const msgA = JSON.stringify({ type: "sessionJoined", code: sessionCode, matched: true, host: true, quick: true });
-  const msgB = JSON.stringify({ type: "sessionJoined", code: sessionCode, matched: true, host: false, quick: true });
+  const msgA = JSON.stringify({
+    type: "sessionJoined",
+    code: sessionCode,
+    matched: true,
+    host: true,
+    quick: true,
+    alias: a.alias,
+    rivalAlias: b.alias,
+  });
+  const msgB = JSON.stringify({
+    type: "sessionJoined",
+    code: sessionCode,
+    matched: true,
+    host: false,
+    quick: true,
+    alias: b.alias,
+    rivalAlias: a.alias,
+  });
   if (a.readyState === 1) a.send(msgA);
   if (b.readyState === 1) b.send(msgB);
   if (a.readyState === 1) a.send(JSON.stringify({ type: "sessionReady", player: 1 }));
   if (b.readyState === 1) b.send(JSON.stringify({ type: "sessionReady", player: 2 }));
   pushRules(session, null);
-  console.log(`# Quick match ${sessionCode}: ${a.playerId} vs ${b.playerId}`);
+  console.log(`# Quick match ${sessionCode}: ${a.alias} vs ${b.alias}`);
   return true;
 }
 
-async function enqueueQuick(ws) {
+async function enqueueQuick(ws, preferredAlias) {
   if (!isQuickSocket(ws)) {
     if (ws.readyState === 1) ws.send(JSON.stringify({ type: "quickDenied", reason: "account" }));
     return;
@@ -222,6 +299,7 @@ async function enqueueQuick(ws) {
   // Si ya estaba en sala, la suelta y reentra a la cola (ocupado -> libre).
   if (ws.sessionCode) await leaveCurrentRoom(ws, "queue");
   if (ws.sessionCode) return;
+  ws.preferredAlias = cleanAlias(preferredAlias);
   ws.quickSeeking = true;
   purgeQuickQueue();
   const other = takeNextSeeker(ws);
@@ -253,6 +331,11 @@ async function enqueueQuick(ws) {
   leaveQuickQueue(fakeA);
   if (quickQueue.indexOf(fakeA) !== -1 || fakeA.quickSeeking) throw new Error("quick leave");
   leaveQuickQueue(fakeB);
+  if (cleanAlias("  Lobo<>  ") !== "Lobo") throw new Error("alias clean");
+  const pair = resolveQuickAliases("Lobo", "Lobo");
+  if (!pair[0] || !pair[1] || pair[0].toLowerCase() === pair[1].toLowerCase()) throw new Error("alias pair");
+  const empty = resolveQuickAliases("", "");
+  if (!empty[0] || !empty[1] || empty[0].toLowerCase() === empty[1].toLowerCase()) throw new Error("alias empty");
 })();
 
 function clearDisconnectTimers(code) {
@@ -555,7 +638,7 @@ async function onPlayerMessage(ws, message) {
     }
 
     if (data.type === "findQuick") {
-      await enqueueQuick(ws);
+      await enqueueQuick(ws, data.alias);
       return;
     }
 

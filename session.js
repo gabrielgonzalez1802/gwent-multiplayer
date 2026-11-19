@@ -44,7 +44,87 @@ if (btnFindQuick) {
 
 const quickStatusElem = document.getElementById("quick-status");
 const quickNoteElem = document.getElementById("quick-note");
+const quickAliasRow = document.getElementById("quick-alias-row");
+const quickAliasInput = document.getElementById("quick-alias");
+const quickAliasRoll = document.getElementById("quick-alias-roll");
 var seekingQuick = false;
+// Alias de la partida rapida actual (servidor). No pisa el localStorage opcional.
+var matchAlias = null;
+var matchRivalAlias = null;
+
+const QUICK_ALIAS_WORDS = [
+  "Lobo",
+  "Cuervo",
+  "Ciervo",
+  "Aguila",
+  "Zorro",
+  "Oso",
+  "Halcon",
+  "Dragon",
+  "Bruma",
+  "Roble",
+  "Risco",
+  "Tormenta",
+  "Ceniza",
+  "Escarcha",
+  "Sombra",
+  "Relampago",
+  "Grifo",
+  "Sirena",
+  "Brujo",
+  "Bruja",
+  "Bardo",
+  "Escudero",
+  "Mercader",
+  "Viajero",
+];
+
+function cleanQuickAlias(raw) {
+  return String(raw || "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 16);
+}
+
+function readQuickAlias() {
+  try {
+    return cleanQuickAlias(localStorage.getItem("gwent-quick-alias") || "");
+  } catch (e) {
+    return "";
+  }
+}
+
+function saveQuickAlias(raw) {
+  var name = cleanQuickAlias(raw);
+  try {
+    if (name) localStorage.setItem("gwent-quick-alias", name);
+    else localStorage.removeItem("gwent-quick-alias");
+  } catch (e) {}
+  return name;
+}
+
+function suggestQuickAlias() {
+  var word = QUICK_ALIAS_WORDS[Math.floor(Math.random() * QUICK_ALIAS_WORDS.length)];
+  var tag = Math.random().toString(36).slice(2, 4).toUpperCase();
+  return cleanQuickAlias(word + "_" + tag) || word;
+}
+
+function clearMatchAlias() {
+  matchAlias = null;
+  matchRivalAlias = null;
+}
+
+function applyMatchAlias(data) {
+  if (!data || !data.quick) return;
+  matchAlias = cleanQuickAlias(data.alias) || null;
+  matchRivalAlias = cleanQuickAlias(data.rivalAlias) || null;
+}
+
+function liveQuickAlias() {
+  if (matchAlias) return matchAlias;
+  return readQuickAlias();
+}
 
 const btnOnlineElem = document.getElementById("online-game");
 btnOnlineElem.addEventListener("click", () => ensureOnline());
@@ -83,6 +163,15 @@ function isQuickClient() {
 function syncQuickUi() {
   var guest = isQuickClient();
   if (quickNoteElem) quickNoteElem.classList.toggle("hide", !guest);
+  if (quickAliasRow) {
+    var showAlias = guest && !createdSessionId && !joinedSessionId;
+    quickAliasRow.classList.toggle("hide", !showAlias);
+    if (showAlias && quickAliasInput && document.activeElement !== quickAliasInput) {
+      quickAliasInput.value = readQuickAlias();
+      quickAliasInput.placeholder = t("quick_alias_ph");
+      quickAliasInput.title = t("quick_alias_hint");
+    }
+  }
   var betBtn = document.getElementById("bet-open");
   if (betBtn) betBtn.classList.toggle("hide", guest);
   var onlineBtn = document.querySelector("#online-menu > .menu-drop-btn");
@@ -102,6 +191,29 @@ function syncQuickUi() {
     quickStatusElem.classList.toggle("hidden", !seekingQuick);
     if (seekingQuick) quickStatusElem.textContent = t("quick_waiting");
   }
+}
+
+if (quickAliasInput) {
+  quickAliasInput.value = readQuickAlias();
+  quickAliasInput.addEventListener("input", function () {
+    var next = cleanQuickAlias(quickAliasInput.value);
+    if (next !== quickAliasInput.value) {
+      var pos = quickAliasInput.selectionStart;
+      quickAliasInput.value = next;
+      if (pos != null) quickAliasInput.setSelectionRange(Math.min(pos, next.length), Math.min(pos, next.length));
+    }
+    saveQuickAlias(quickAliasInput.value);
+  });
+  quickAliasInput.addEventListener("change", function () {
+    quickAliasInput.value = saveQuickAlias(quickAliasInput.value);
+  });
+}
+if (quickAliasRoll) {
+  quickAliasRoll.addEventListener("click", function () {
+    var name = suggestQuickAlias();
+    if (quickAliasInput) quickAliasInput.value = name;
+    saveQuickAlias(name);
+  });
 }
 
 function setSeekingQuick(on) {
@@ -164,6 +276,7 @@ function saveSeat(code, host) {
 function clearSeat() {
   try { localStorage.removeItem("gwent-seat"); } catch (e) {}
   try { sessionStorage.removeItem("gwent-match"); } catch (e) {}
+  clearMatchAlias();
 }
 
 function readSeat() {
@@ -205,6 +318,7 @@ function showRestoredLobby(code, host) {
 
 function enterMatchedLobby(data) {
   setSeekingQuick(false);
+  applyMatchAlias(data);
   if (data.host) showSessionCode(data.code);
   else {
     createdSessionId = null;
@@ -219,7 +333,9 @@ function enterMatchedLobby(data) {
   if (btnFindQuick) btnFindQuick.classList.add("hidden");
   inputGroup.classList.add("hidden");
   btnConfirmJoin.classList.add("hidden");
+  if (typeof syncQuickUi === "function") syncQuickUi();
   if (typeof syncChat === "function") syncChat();
+  if (typeof paintSeatRole === "function") paintSeatRole();
   if (typeof syncLeaveLobby === "function") syncLeaveLobby();
 }
 
@@ -564,8 +680,9 @@ function findQuick() {
   }
   if (seekingQuick) return;
   ensureQuickDeck();
+  var alias = quickAliasInput ? saveQuickAlias(quickAliasInput.value) : readQuickAlias();
   setSeekingQuick(true);
-  socket.send(JSON.stringify({ type: "findQuick" }));
+  socket.send(JSON.stringify({ type: "findQuick", alias: alias }));
 }
 
 function joinGame() {

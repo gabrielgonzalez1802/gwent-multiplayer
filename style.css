@@ -3705,6 +3705,50 @@ main.noclick .leader-box {
 	max-width: 220px;
 }
 
+.quick-alias-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin: 0 0 8px;
+	max-width: 260px;
+}
+
+.quick-alias-row.hide {
+	display: none;
+}
+
+.quick-alias-row label {
+	flex: 0 0 100%;
+	margin: 0;
+	font-size: 12px;
+	color: #bbb;
+}
+
+#quick-alias {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 32px;
+	padding: 0 8px;
+	font-size: 13px;
+	color: #ddd;
+	background: rgb(20, 20, 20);
+	border: 0.1vw ridge rgb(30, 30, 30);
+}
+
+#quick-alias-roll {
+	flex: 0 0 auto;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	font-size: 16px;
+	line-height: 1;
+	color: #ddd;
+	background: rgb(20, 20, 20);
+	border: 0.1vw ridge rgb(30, 30, 30);
+	cursor: pointer;
+}
+
 .quick-status.hidden,
 #find-quick.hidden {
 	display: none;

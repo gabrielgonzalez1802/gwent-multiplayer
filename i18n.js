@@ -168,6 +168,10 @@ var TEXTS = {
     quick_waiting: "Looking for opponent…",
     quick_denied: "Find opponent is only for quick play without an account.",
     quick_guest: "Guest",
+    quick_alias: "Alias",
+    quick_alias_ph: "Optional",
+    quick_alias_roll: "Random",
+    quick_alias_hint: "Optional. If empty, the server picks one.",
     session_code: "Session code",
     join: "Join",
     ready: "Ready",
@@ -420,6 +424,10 @@ var TEXTS = {
     quick_waiting: "Buscando contrincante…",
     quick_denied: "Buscar contrincante solo vale en modo rápido sin cuenta.",
     quick_guest: "Invitado",
+    quick_alias: "Alias",
+    quick_alias_ph: "Opcional",
+    quick_alias_roll: "Al azar",
+    quick_alias_hint: "Opcional. Si lo dejas vacío, el servidor elige uno.",
     session_code: "Código",
     join: "Entrar",
     ready: "Listo",
@@ -1415,6 +1423,12 @@ function applyI18n() {
   });
   document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
     el.placeholder = t(el.getAttribute("data-i18n-placeholder"));
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach(function (el) {
+    el.title = t(el.getAttribute("data-i18n-title"));
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach(function (el) {
+    el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria")));
   });
   var toggle = document.getElementById("lang-toggle");
   if (toggle) toggle.textContent = LANG === "es" ? "EN" : "ES";
