@@ -480,6 +480,7 @@ function markRedraw(session, playerId) {
 function sendStart(session) {
   if (!session || session.started) return;
   session.started = true;
+  session.pendingCoin = null;
   if (session.redrawTimer) clearTimeout(session.redrawTimer);
   session.redrawTimer = null;
   session.players.forEach((player) => {
@@ -751,6 +752,18 @@ async function onPlayerMessage(ws, message) {
         const session = sessions[ws.sessionCode];
         touchLobby(session);
         account.matchBegan(session);
+        // Ambos clientes mandan gameStart (tambien en rematch). Un solo coinToss por partida.
+        if (session.pendingCoin) {
+          if (ws.readyState === 1) {
+            ws.send(
+              JSON.stringify({
+                type: "coinToss",
+                player: session.pendingCoin,
+              }),
+            );
+          }
+          return;
+        }
         // A rematch reuses the same room. Without this, sendStart stays blocked after the first game.
         clearMatchTimers(session);
         session.started = false;
@@ -758,15 +771,18 @@ async function onPlayerMessage(ws, message) {
         session.firstPlayer =
           session.players[Math.floor(Math.random() * session.players.length)]
             .playerId;
+        session.pendingCoin = session.firstPlayer;
         console.log("firstPlayer = ", session.firstPlayer);
 
         session.players.forEach((player) => {
-          player.send(
-            JSON.stringify({
-              type: "coinToss",
-              player: session.firstPlayer,
-            }),
-          );
+          if (player.readyState === 1) {
+            player.send(
+              JSON.stringify({
+                type: "coinToss",
+                player: session.firstPlayer,
+              }),
+            );
+          }
         });
       }
       return;

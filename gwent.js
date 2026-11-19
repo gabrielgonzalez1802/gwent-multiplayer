@@ -1652,7 +1652,8 @@ class Game {
       await this.runEffects(this.turnStart);
       if (!this.currPlayer.opponent().passed) {
         this.currPlayer = this.currPlayer.opponent();
-        ui.notification(this.currPlayer.tag + "-turn", 1200);
+        // No bloquear el turno esperando el aviso; el aviso se cierra solo / al preview.
+        ui.notification(this.currPlayer.tag + "-turn", 1000);
       }
       if (this.currPlayer === player_me) {
         clockClosed = false;
@@ -1664,6 +1665,7 @@ class Game {
         passButton.classList.add("hidden");
         document.removeEventListener("keydown", handleKeyDown);
         document.removeEventListener("keyup", handleKeyUp);
+        ui.enablePlayer(false);
       }
 
       this.currPlayer.startTurn();
@@ -1848,6 +1850,8 @@ class Game {
 
   // Restarts the last game with the same decks
   restartGame() {
+    if (ui && typeof ui.forceHideNotification === "function") ui.forceHideNotification();
+    if (typeof dismissCarouselHint === "function") dismissCarouselHint();
     this.reset();
     player_me.reset();
     player_op.reset();
@@ -2272,6 +2276,9 @@ class UI {
 
   // Displays a card preview then enables and highlights potential card destinations
   showPreview(card) {
+    // Al elegir carta: quitar aviso negro (turno/flechas) para no tapar la jugada.
+    this.forceHideNotification();
+    if (typeof dismissCarouselHint === "function") dismissCarouselHint();
     tocar("explaining", false);
     this.showPreviewVisuals(card);
     this.setSelectable(card, true);
@@ -2361,12 +2368,27 @@ class UI {
     this.processNotificationQueue();
   }
 
+  forceHideNotification() {
+    if (this.currentNotification) {
+      clearTimeout(this.currentNotification.timeout);
+      clearTimeout(this.currentNotification.hard);
+      var resolve = this.currentNotification.resolve;
+      this.currentNotification = null;
+      if (resolve) resolve();
+    }
+    if (this.notif_elem) {
+      this.notif_elem.style.display = "none";
+      this.notif_elem.style.opacity = "0";
+      this.notif_elem.classList.add("hide");
+    }
+  }
+
   async showNotification(name, duration) {
     // Clear previous notification, if any
     await this.clearCurrentNotification();
 
     if (!duration) duration = 1200;
-    duration = Math.max(800, Math.min(duration, 4000));
+    duration = Math.max(800, Math.min(duration, 2500));
 
     var guia2 = {
       "me-pass": "pass",
@@ -2407,22 +2429,38 @@ class UI {
 
     // Store the timeout for cleanup
     return new Promise((resolve) => {
+      var finished = false;
+      var finish = function (speed) {
+        if (finished) return;
+        finished = true;
+        if (ui.currentNotification) {
+          clearTimeout(ui.currentNotification.timeout);
+          clearTimeout(ui.currentNotification.hard);
+          ui.currentNotification = null;
+        }
+        ui.fadeOutAndHide(speed || fadeSpeed).then(resolve, resolve);
+      };
       this.currentNotification = {
-        timeout: setTimeout(async () => {
-          await this.fadeOutAndHide(fadeSpeed);
-          this.currentNotification = null;
-          resolve();
+        resolve: resolve,
+        timeout: setTimeout(function () {
+          finish(fadeSpeed);
         }, duration),
+        // Red de seguridad: si el fade se cuelga, igual se cierra.
+        hard: setTimeout(function () {
+          finish(50);
+        }, duration + 1500),
       };
     });
   }
 
   async clearCurrentNotification() {
-    if (this.currentNotification) {
-      clearTimeout(this.currentNotification.timeout);
-      await this.fadeOutAndHide(50); // should fade out fast
-      this.currentNotification = null;
-    }
+    if (!this.currentNotification) return;
+    clearTimeout(this.currentNotification.timeout);
+    clearTimeout(this.currentNotification.hard);
+    var resolve = this.currentNotification.resolve;
+    this.currentNotification = null;
+    await this.fadeOutAndHide(50);
+    if (resolve) resolve();
   }
 
   async fadeOutAndHide(fadeSpeed) {
@@ -4660,26 +4698,34 @@ async function fadeIn(elem, duration, delay) {
 
 // Fades an element over a duration
 async function fade(fadeIn, elem, dur, delay) {
+  if (!elem) return;
   if (delay) await sleep(delay);
-  let op = fadeIn ? 0.1 : 1;
-  elem.style.opacity = op;
-  elem.style.filter = "alpha(opacity=" + op * 100 + ")";
-  if (fadeIn) elem.classList.remove("hide");
-  let timer = setInterval(async function () {
-    op += op * (fadeIn ? 0.1 : -0.1);
-    if (op >= 1) {
-      clearInterval(timer);
-      return;
-    } else if (op <= 0.1) {
-      elem.classList.add("hide");
-      elem.style.opacity = "";
-      elem.style.filter = "";
-      clearInterval(timer);
-      return;
-    }
-    elem.style.opacity = op;
+  // Antes el interval no se esperaba: await fadeIn resolvia al instante y los avisos negros se colgaban.
+  return new Promise(function (resolve) {
+    var op = fadeIn ? 0.1 : 1;
+    elem.style.opacity = String(op);
     elem.style.filter = "alpha(opacity=" + op * 100 + ")";
-  }, dur / 24);
+    if (fadeIn) elem.classList.remove("hide");
+    var stepMs = Math.max(10, (dur || 150) / 24);
+    var timer = setInterval(function () {
+      op += op * (fadeIn ? 0.1 : -0.1);
+      if (op >= 1) {
+        elem.style.opacity = "1";
+        elem.style.filter = "";
+        clearInterval(timer);
+        resolve();
+      } else if (op <= 0.1) {
+        elem.classList.add("hide");
+        elem.style.opacity = "";
+        elem.style.filter = "";
+        clearInterval(timer);
+        resolve();
+      } else {
+        elem.style.opacity = String(op);
+        elem.style.filter = "alpha(opacity=" + op * 100 + ")";
+      }
+    }, stepMs);
+  });
 }
 
 //      Get Image paths
