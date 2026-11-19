@@ -2366,7 +2366,7 @@ class UI {
     await this.clearCurrentNotification();
 
     if (!duration) duration = 1200;
-    duration = Math.max(800, duration);
+    duration = Math.max(800, Math.min(duration, 4000));
 
     var guia2 = {
       "me-pass": "pass",
@@ -2398,6 +2398,7 @@ class UI {
 
     // Resets the opacity visual
     if (this.notif_elem) {
+      this.notif_elem.classList.remove("hide");
       this.notif_elem.style.opacity = "0";
       this.notif_elem.style.display = "flex";
     }
@@ -2428,13 +2429,11 @@ class UI {
     if (this.notif_elem) {
       try {
         await fadeOut(this.notif_elem, fadeSpeed, 0);
-        this.notif_elem.style.display = "none";
-        this.notif_elem.style.opacity = "0";
-      } catch (error) {
-        // force hide in case of error
-        this.notif_elem.style.display = "none";
-        this.notif_elem.style.opacity = "0";
-      }
+      } catch (error) {}
+      // Siempre forzar cierre: no dejar barra negra sucia.
+      this.notif_elem.style.display = "none";
+      this.notif_elem.style.opacity = "0";
+      this.notif_elem.classList.add("hide");
     }
   }
 
@@ -2494,12 +2493,13 @@ class UI {
       bQuit,
       title,
     );
+    // Promise propia: evita carrera con carruseles anidados (lider -> medico/clima).
+    const done = new Promise(function (resolve) {
+      carousel._onDone = resolve;
+    });
     if (Carousel.curr === undefined || Carousel.curr === null) carousel.start();
-    else {
-      this.carousels.push(carousel);
-      return;
-    }
-    await sleepUntil(() => this.carousels.length === 0 && !Carousel.curr, 100);
+    else this.carousels.push(carousel);
+    await done;
   }
 
   // Starts the next queued Carousel
@@ -2625,6 +2625,8 @@ class Carousel {
     this.bExit = bExit;
     this.title = title;
     this.cancelled = false;
+    this.closed = false;
+    this._onDone = null;
 
     if (!Carousel.elem) {
       Carousel.elem = document.getElementById("carousel");
@@ -2676,6 +2678,7 @@ class Carousel {
   // Called by the client to cycle cards displayed by n
   shift(event, n) {
     (event || window.event).stopPropagation();
+    if (typeof dismissCarouselHint === "function") dismissCarouselHint();
     this.index = Math.max(0, Math.min(this.indices.length - 1, this.index + n));
     this.update();
   }
@@ -2683,13 +2686,24 @@ class Carousel {
   // Called by client to perform action on the middle card in focus
   async select(event) {
     (event || window.event).stopPropagation();
+    if (typeof dismissCarouselHint === "function") dismissCarouselHint();
+    if (this.closed) return;
     --this.count;
-    if (this.isLastSelection()) this.elem.classList.add("hide");
-    if (this.count <= 0 && !this.bExit) ui.enablePlayer(false);
+    const last = this.isLastSelection();
+    const pickIndex = this.indices[this.index];
+    // Liberar el carrusel ANTES de la accion: el lider puede abrir otro (medico/clima)
+    // sin chocar con Carousel.curr ni despertar mal el await externo.
+    if (last) this.releaseVisual();
+    else if (this.count <= 0 && !this.bExit) ui.enablePlayer(false);
 
     const actionString = this.action.toString();
     tocar("redraw", false);
-    const resp = await this.action(this.container, this.indices[this.index]);
+    let resp;
+    try {
+      resp = await this.action(this.container, pickIndex);
+    } catch (err) {
+      console.error(err);
+    }
     // Solo el lambda legado. medicPick / medicHandPick mandan medicDraw desde abilities.js.
     if (actionString === "(c,i) => newCard = c.cards[i]") {
       if (resp && resp.filename) setTimeout(() => {
@@ -2716,23 +2730,44 @@ class Carousel {
         );
       }, 1000);
     }
-    if (this.isLastSelection() && !this.cancelled) return this.exit();
+    if (last && !this.cancelled) return this.finishClose();
     this.update();
   }
 
   // Called by client to exit out of the current Carousel if allowed. Enables player interraction.
   cancel() {
-    if (this.bExit) {
-      this.cancelled = true;
-      tocar("discard", false);
-      this.exit();
-    }
-    restoreBoardClicks();
+    if (!this.bExit || this.closed) return;
+    this.cancelled = true;
+    tocar("discard", false);
+    this.exit();
   }
 
   // Returns true if there are no more cards to view or select
   isLastSelection() {
     return this.count <= 0 || this.indices.length === 0;
+  }
+
+  // Oculta el carrusel y libera Carousel.curr sin cerrar el await (para anidados).
+  releaseVisual() {
+    if (this.elem) this.elem.classList.add("hide");
+    hideCarouselChrome();
+    if (this.previews) {
+      for (let x of this.previews) x.style.backgroundImage = "";
+    }
+    if (Carousel.curr === this) Carousel.clearCurrent();
+  }
+
+  // Cierre definitivo e idempotente: despierta queueCarousel y restaura clics.
+  finishClose() {
+    if (this.closed) return;
+    this.closed = true;
+    this.releaseVisual();
+    const done = this._onDone;
+    this._onDone = null;
+    if (done) done();
+    if (!Carousel.curr) ui.quitCarousel();
+    restoreBoardClicks();
+    if (tutorialOn && tutorialPhase === "match" && !tutorialLive) enterTutorialLive();
   }
 
   // Updates the visuals of the current selection of cards
@@ -2769,13 +2804,7 @@ class Carousel {
 
   // Clears and quits the current carousel
   exit() {
-    for (let x of this.previews) x.style.backgroundImage = "";
-    this.elem.classList.add("hide");
-    hideCarouselChrome();
-    Carousel.clearCurrent();
-    ui.quitCarousel();
-    if (this.bExit) restoreBoardClicks();
-    if (tutorialOn && tutorialPhase === "match" && !tutorialLive) enterTutorialLive();
+    this.finishClose();
   }
 
   // Statically sets the current carousel
@@ -5448,6 +5477,15 @@ function syncLeaveLobby() {
   btn.classList.toggle("hide", !inRoom || !onDeck || inMatch);
 }
 
+var carouselHintTimer = null;
+
+function dismissCarouselHint() {
+  clearTimeout(carouselHintTimer);
+  carouselHintTimer = null;
+  var hint = document.getElementById("carousel-hint");
+  if (hint) hint.classList.add("hide");
+}
+
 function paintCarouselChrome(carousel) {
   var hint = document.getElementById("carousel-hint");
   var actions = document.getElementById("carousel-actions");
@@ -5455,15 +5493,17 @@ function paintCarouselChrome(carousel) {
   if (hint) {
     hint.textContent = carousel && carousel.title === "redraw_hint" ? t("carousel_redraw") : t("carousel_hint");
     hint.classList.remove("hide");
+    // Aviso negro de flechas: se oculta solo para no dejar la pantalla sucia.
+    clearTimeout(carouselHintTimer);
+    carouselHintTimer = setTimeout(dismissCarouselHint, 3200);
   }
   if (actions) actions.classList.remove("hide");
   if (skip) skip.classList.toggle("hide", !(carousel && carousel.bExit));
 }
 
 function hideCarouselChrome() {
-  var hint = document.getElementById("carousel-hint");
+  dismissCarouselHint();
   var actions = document.getElementById("carousel-actions");
-  if (hint) hint.classList.add("hide");
   if (actions) actions.classList.add("hide");
 }
 
@@ -5675,8 +5715,10 @@ function myKeyTurn() {
 }
 
 function restoreBoardClicks() {
+  var main = document.getElementsByTagName("main")[0];
+  // Sin partida (constructor de mazo / menu): nunca bloquear main tras elegir lider/faccion.
   if (typeof game === "undefined" || !game || typeof player_me === "undefined" || !player_me || !ui) {
-    if (ui) ui.enablePlayer(false);
+    if (main) main.classList.remove("noclick");
     return;
   }
   var mine =
