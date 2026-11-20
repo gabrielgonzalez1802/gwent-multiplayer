@@ -498,6 +498,28 @@ async function publicUser(userId) {
   return user;
 }
 
+// mysql2 suele devolver DATETIME como Date; String(Date)+"Z" da NaN y borraba el token al instante.
+function tokenSeenMs(seenAt) {
+  if (seenAt instanceof Date) return seenAt.getTime();
+  if (typeof seenAt === "number") return seenAt;
+  if (typeof seenAt !== "string") return NaN;
+  const raw = seenAt.trim();
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(raw) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    return Date.parse(raw.replace(" ", "T") + "Z");
+  }
+  return Date.parse(raw);
+}
+
+(function () {
+  const now = Date.now();
+  if (!Number.isFinite(tokenSeenMs(new Date(now))) || Math.abs(tokenSeenMs(new Date(now)) - now) > 5) {
+    throw new Error("tokenSeenMs Date");
+  }
+  const sql = "2026-11-20 21:35:00";
+  if (tokenSeenMs(sql) !== Date.parse("2026-11-20T21:35:00Z")) throw new Error("tokenSeenMs sql");
+  if (Number.isFinite(tokenSeenMs(null)) || Number.isFinite(tokenSeenMs({}))) throw new Error("tokenSeenMs bad");
+})();
+
 async function userFromToken(token) {
   if (!token || typeof token !== "string") return null;
   const [rows] = await pool.query(
@@ -505,10 +527,8 @@ async function userFromToken(token) {
     [token],
   );
   if (!rows.length) return null;
-  // DATETIME de MySQL en UTC (UTC_TIMESTAMP). Se interpreta como Z.
-  const seenMs = rows[0].seen_at
-    ? Date.parse(String(rows[0].seen_at).replace(" ", "T") + "Z")
-    : 0;
+  // DATETIME de MySQL en UTC (UTC_TIMESTAMP).
+  const seenMs = rows[0].seen_at ? tokenSeenMs(rows[0].seen_at) : 0;
   if (!Number.isFinite(seenMs) || !seenMs || Date.now() - seenMs > LOGIN_TTL_MS) {
     await pool.query("DELETE FROM login_tokens WHERE token=?", [token]);
     return null;
@@ -1063,6 +1083,8 @@ async function onSocket(ws, data, sessions) {
     ws.send(JSON.stringify(user ? { type: "authOk", name: user.name } : { type: "authNo" }));
     if (ws.sessionCode && sessions[ws.sessionCode]) {
       const session = sessions[ws.sessionCode];
+      // Sala a medias: al autenticarse después de crear, el flag quick debe seguir al userId.
+      if (session.players.length === 1) session.quick = !ws.userId;
       if (!dropMixed(session)) sendBet(session);
     }
     return "done";
